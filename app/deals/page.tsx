@@ -238,6 +238,7 @@ export default function DealsPage() {
                 <th>Deal ID</th><th>Client</th><th>Product</th><th>Funder</th>
                 <th className="num">Amount</th><th className="num">Rate</th><th className="num">Term</th>
                 <th>Stage</th><th>Agents</th><th>Status</th><th>Closed</th>
+                <th>Created</th><th>By</th>
                 <th style={{ width: 40 }} />
               </tr>
             </thead>
@@ -258,15 +259,25 @@ export default function DealsPage() {
                   <td><AvatarStack items={d.agents.map(id => agentById(id)).filter(Boolean) as any[]} /></td>
                   <td><StatusPill status={d.status} /></td>
                   <td className="muted-num">{fmt.dateShort(d.closed)}</td>
+                  <td className="muted-num">{fmt.dateShort(d.createdAt)}</td>
+                  <td className="muted" style={{ fontSize: 12 }}>{d.createdBy}</td>
                   <td onClick={e => e.stopPropagation()}>
                     <RowMenu deal={d} onDelete={() => deleteDeal(d.id)} onDuplicate={() => duplicateDeal(d)} />
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={13} style={{ textAlign: 'center', padding: '48px 20px' }}>
-                  <div style={{ color: 'var(--ink-4)', fontSize: 13 }}>No deals match your filters</div>
-                  {(search || activeFilters > 0) && <button className="btn sm" style={{ marginTop: 12 }} onClick={() => { setSearch(''); clearFilters() }}>Clear all</button>}
+                <tr><td colSpan={15}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon"><Icons.Search /></div>
+                    <p className="empty-state-title">No results found</p>
+                    <p className="empty-state-sub">Try adjusting your search or filters</p>
+                  </div>
+                  {(search || activeFilters > 0) && (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+                      <button className="btn sm" onClick={() => { setSearch(''); clearFilters() }}>Clear all</button>
+                    </div>
+                  )}
                 </td></tr>
               )}
             </tbody>

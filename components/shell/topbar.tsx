@@ -1,4 +1,5 @@
 'use client'
+import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { notifications } from '@/lib/data'
@@ -20,9 +21,21 @@ const crumbs: Record<string, string[]> = {
 
 export function Topbar() {
   const pathname = usePathname()
-  const { toggleTheme, tweaks, setNotifOpen, notifOpen, setNewDealOpen } = useShell()
+  const { toggleTheme, tweaks, setNotifOpen, notifOpen, setNewDealOpen, cmdOpen, setCmdOpen } = useShell()
   const breadcrumbs = crumbs[pathname] ?? ['Workspace']
   const unread = notifications.filter(n => n.unread).length
+
+  // Global ⌘K / Ctrl+K listener
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCmdOpen(!cmdOpen)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [cmdOpen, setCmdOpen])
 
   return (
     <header className="topbar">
@@ -42,6 +55,17 @@ export function Topbar() {
           <Icons.Plus /> New deal
         </button>
       )}
+
+      <button
+        className="btn sm ghost"
+        onClick={() => setCmdOpen(true)}
+        title="Open command palette"
+        style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink-3)', fontSize: 12 }}
+      >
+        <Icons.Search style={{ width: 13, height: 13 }} />
+        <span style={{ fontFamily: 'var(--font-sans)' }}>Search</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, opacity: 0.7, marginLeft: 2 }}>⌘K</span>
+      </button>
 
       <div className="tb-divider" />
 

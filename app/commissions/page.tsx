@@ -1,5 +1,6 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { commissions, agentById, deals } from '@/lib/data'
@@ -11,6 +12,7 @@ import { useShell } from '@/components/shell/shell-provider'
 const TABS = ['All', 'Pending', 'Approved', 'Paid']
 
 export default function CommissionsPage() {
+  const router = useRouter()
   const { openCommission } = useShell()
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState('All')
@@ -74,7 +76,7 @@ export default function CommissionsPage() {
               {filtered.map(c => {
                 const deal = deals.find(d => d.id === c.dealId)
                 return (
-                  <tr key={c.id} onClick={() => openCommission(c)}>
+                  <tr key={c.id} onClick={() => router.push(`/commissions/${c.id}`)} style={{ cursor: 'pointer' }}>
                     <td><span className="mono text-xs" style={{ color: 'var(--accent-ink)', fontWeight: 500 }}>{c.id}</span></td>
                     <td><span className="mono text-xs">{c.dealId}</span></td>
                     <td><span className="strong">{deal?.client ?? '—'}</span></td>
@@ -109,7 +111,13 @@ export default function CommissionsPage() {
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: 'var(--ink-4)' }}>No commissions match filters</td></tr>
+                <tr><td colSpan={10}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon"><Icons.Search /></div>
+                    <p className="empty-state-title">No results found</p>
+                    <p className="empty-state-sub">Try adjusting your search or filters</p>
+                  </div>
+                </td></tr>
               )}
             </tbody>
           </table>

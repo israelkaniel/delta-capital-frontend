@@ -607,3 +607,130 @@ textarea.input { height: auto; padding: 8px 10px; min-height: 70px; resize: vert
 .note-composer textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .note-composer-foot { display: flex; align-items: center; justify-content: space-between; }
 .note-composer-hint { font-size: 11px; color: var(--ink-4); }
+
+/* ── SKELETON LOADERS ─────────────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-sunk) 25%, var(--bg-hover) 50%, var(--bg-sunk) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: var(--r-sm);
+}
+.skeleton-text { height: 13px; margin-bottom: 6px; }
+.skeleton-text.w-60 { width: 60%; }
+.skeleton-text.w-80 { width: 80%; }
+.skeleton-text.w-40 { width: 40%; }
+.skeleton-title { height: 22px; width: 55%; margin-bottom: 10px; }
+.skeleton-row { display: grid; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); }
+.skeleton-avatar { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+.skeleton-pill { height: 20px; width: 60px; border-radius: 999px; }
+
+/* ── EMPTY STATE ──────────────────────────────────────────────────── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 20px; text-align: center; gap: 10px;
+}
+.empty-state-icon {
+  width: 44px; height: 44px; border-radius: var(--r-lg);
+  background: var(--bg-sunk); border: 1px solid var(--line);
+  display: grid; place-items: center; color: var(--ink-4); margin-bottom: 4px;
+}
+.empty-state-title { font-size: 14px; font-weight: 600; color: var(--ink-2); margin: 0; }
+.empty-state-sub { font-size: 12.5px; color: var(--ink-4); max-width: 280px; line-height: 1.5; margin: 0; }
+
+/* ── COMMAND PALETTE ──────────────────────────────────────────────── */
+.cmd-overlay {
+  position: fixed; inset: 0; background: rgba(10,10,8,0.45);
+  backdrop-filter: blur(4px); z-index: 500;
+  display: grid; place-items: start center; padding-top: 14vh;
+  opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+.cmd-overlay.open { opacity: 1; pointer-events: auto; }
+.cmd-palette {
+  width: min(580px, 94vw); background: var(--bg-elev);
+  border: 1px solid var(--line); border-radius: var(--r-xl);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+  overflow: hidden;
+  transform: translateY(-8px) scale(0.98);
+  transition: transform 0.18s cubic-bezier(0.32,0.72,0.24,1);
+}
+.cmd-overlay.open .cmd-palette { transform: translateY(0) scale(1); }
+.cmd-input-wrap {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--line);
+}
+.cmd-input-wrap svg { width: 16px; height: 16px; color: var(--ink-4); flex-shrink: 0; }
+.cmd-input {
+  flex: 1; background: none; border: none; outline: none;
+  font-size: 15px; color: var(--ink-1); font-family: var(--font-sans);
+}
+.cmd-input::placeholder { color: var(--ink-4); }
+.cmd-results { max-height: 380px; overflow-y: auto; }
+.cmd-section-label {
+  padding: 8px 14px 4px; font-size: 10px; font-weight: 600;
+  color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.cmd-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; cursor: pointer; transition: background 0.07s;
+  font-size: 13px; color: var(--ink-1);
+}
+.cmd-item:hover, .cmd-item.selected { background: var(--bg-hover); }
+.cmd-item svg { width: 14px; height: 14px; color: var(--ink-3); flex-shrink: 0; }
+.cmd-item-main { flex: 1; font-weight: 500; }
+.cmd-item-sub { font-size: 11.5px; color: var(--ink-3); }
+.cmd-item-tag { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-4); }
+.cmd-empty { padding: 32px 16px; text-align: center; color: var(--ink-4); font-size: 13px; }
+.cmd-footer {
+  padding: 8px 14px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px;
+  font-size: 11px; color: var(--ink-4); background: var(--bg-sunk);
+}
+.cmd-key {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 18px; padding: 0 5px;
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: 4px; font-size: 10px; color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+/* ── MOBILE RESPONSIVE ────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr !important; grid-template-rows: auto 1fr; }
+  .sidebar { display: none; }
+  .topbar { grid-column: 1; }
+  .main { grid-column: 1; grid-row: 2; }
+  .page, .page.wide { padding: 14px 16px 60px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .grid-3, .grid-4 { grid-template-columns: 1fr 1fr !important; }
+  .grid-2 { grid-template-columns: 1fr !important; }
+  .page-head { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .page-head .actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tbl { min-width: 600px; }
+  .cmd-palette { width: 100vw; border-radius: 0; }
+  .cmd-overlay { padding-top: 0; align-items: flex-start; }
+  .drawer { width: 100vw !important; }
+  .audit-foot { flex-direction: column; gap: 10px; }
+  .audit-sep { width: 100%; height: 1px; align-self: auto; }
+}
+
+/* ── RULES EDITOR MODAL ───────────────────────────────────────────── */
+.rule-edit-field {
+  display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px;
+}
+.rule-edit-field label { font-size: 11.5px; font-weight: 500; color: var(--ink-3); }
+.rule-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px; border-bottom: 1px solid var(--line);
+  transition: background 0.08s;
+}
+.rule-row:hover { background: var(--bg-hover); }
+.rule-row:last-child { border-bottom: none; }
+.rule-drag { color: var(--ink-5); cursor: grab; flex-shrink: 0; }
+.rule-name { flex: 1; font-size: 13px; font-weight: 500; }
+.rule-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+.rule-value { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 2px 8px; border-radius: 4px; }

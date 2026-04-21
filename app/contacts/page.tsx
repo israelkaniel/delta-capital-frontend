@@ -1,5 +1,6 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { contacts } from '@/lib/data'
 import { Avatar } from '@/components/ui/avatar'
@@ -8,6 +9,7 @@ import { FilterBar } from '@/components/ui/filter-bar'
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 47) % 360
 
 export default function ContactsPage() {
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [role, setRole] = useState('')
 
@@ -50,7 +52,7 @@ export default function ContactsPage() {
             </thead>
             <tbody>
               {filtered.map(c => (
-                <tr key={c.id}>
+                <tr key={c.id} onClick={() => router.push(`/contacts/${c.id}`)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <Avatar name={c.name} hue={hueFromId(c.id)} size="md" />
@@ -66,7 +68,13 @@ export default function ContactsPage() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', padding: 40, color: 'var(--ink-4)' }}>No contacts match filters</td></tr>
+                <tr><td colSpan={5}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon"><Icons.Search /></div>
+                    <p className="empty-state-title">No results found</p>
+                    <p className="empty-state-sub">Try adjusting your search or filters</p>
+                  </div>
+                </td></tr>
               )}
             </tbody>
           </table>

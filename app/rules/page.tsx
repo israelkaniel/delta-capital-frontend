@@ -20,12 +20,34 @@ const DEFAULT_RULES: Rule[] = [
 
 const typeTone = (t: string) => t === 'Funder' ? 'accent' : t === 'Split' ? 'info' : t === 'Override' ? 'warn' : t === 'Cap' ? 'neg' : 'default'
 
+type DraftRule = Rule & { description: string }
+
 export default function RulesPage() {
   const [rules, setRules] = useState<Rule[]>(DEFAULT_RULES)
-  const [editing, setEditing] = useState<string | null>(null)
+  const [editingRule, setEditingRule] = useState<Rule | null>(null)
+  const [draftRule, setDraftRule] = useState<DraftRule | null>(null)
 
   const toggle = (id: string) => {
     setRules(rules.map(r => r.id === id ? { ...r, active: !r.active } : r))
+  }
+
+  const openEdit = (rule: Rule) => {
+    setEditingRule(rule)
+    setDraftRule({ ...rule, description: '' })
+  }
+
+  const closeEdit = () => {
+    setEditingRule(null)
+    setDraftRule(null)
+  }
+
+  const saveEdit = () => {
+    if (!draftRule) return
+    setRules(rules.map(r => r.id === draftRule.id
+      ? { ...r, name: draftRule.name, rate: draftRule.rate, active: draftRule.active, condition: draftRule.condition }
+      : r
+    ))
+    closeEdit()
   }
 
   return (
@@ -73,7 +95,7 @@ export default function RulesPage() {
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--ink-1)', minWidth: 64, textAlign: 'right' }}>{r.rate}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button className="btn sm ghost" onClick={() => setEditing(r.id)}>Edit</button>
+                <button className="btn sm ghost" onClick={() => openEdit(r)}>Edit</button>
                 <label className="toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12 }}>
                   <input type="checkbox" checked={r.active} onChange={() => toggle(r.id)} style={{ display: 'none' }} />
                   <div style={{
@@ -98,6 +120,91 @@ export default function RulesPage() {
           Version history and audit log coming soon.
         </div>
       </div>
+
+      {editingRule && draftRule && (
+        <div className="modal-overlay open" onClick={closeEdit}>
+          <div className="modal" style={{ width: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <span>Edit rule</span>
+              <button className="close-btn" onClick={closeEdit} aria-label="Close">
+                <Icons.X style={{ width: 16, height: 16 }} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="field">
+                <label style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-2)', display: 'block', marginBottom: 6 }}>
+                  Name
+                </label>
+                <input
+                  className="input"
+                  value={draftRule.name}
+                  onChange={e => setDraftRule({ ...draftRule, name: e.target.value })}
+                  placeholder="Rule name"
+                />
+              </div>
+
+              <div className="field">
+                <label style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-2)', display: 'block', marginBottom: 6 }}>
+                  Value / Rate
+                </label>
+                <input
+                  className="input"
+                  value={draftRule.rate}
+                  onChange={e => setDraftRule({ ...draftRule, rate: e.target.value })}
+                  placeholder="e.g. 2.00% or $25K"
+                />
+              </div>
+
+              <div className="field">
+                <label style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-2)', display: 'block', marginBottom: 6 }}>
+                  Description / Condition
+                </label>
+                <textarea
+                  className="input"
+                  value={draftRule.condition}
+                  onChange={e => setDraftRule({ ...draftRule, condition: e.target.value })}
+                  placeholder="Condition or description"
+                  rows={3}
+                  style={{ resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+
+              <div className="field" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>Active</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>Include this rule in commission calculations</div>
+                </div>
+                <label style={{ cursor: 'pointer' }} aria-label="Toggle rule active">
+                  <input
+                    type="checkbox"
+                    checked={draftRule.active}
+                    onChange={() => setDraftRule({ ...draftRule, active: !draftRule.active })}
+                    style={{ display: 'none' }}
+                  />
+                  <div style={{
+                    width: 32, height: 18, borderRadius: 9,
+                    background: draftRule.active ? 'var(--accent)' : 'var(--ink-5)',
+                    transition: 'background 0.2s', position: 'relative',
+                  }}>
+                    <div style={{
+                      position: 'absolute', top: 3,
+                      left: draftRule.active ? 16 : 3,
+                      width: 12, height: 12,
+                      borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
+                    }} />
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div className="modal-foot">
+              <button className="btn ghost" onClick={closeEdit}>Cancel</button>
+              <button className="btn primary" onClick={saveEdit}>Save changes</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -24,6 +24,8 @@ type ShellCtx = {
   setNotifOpen: (v: boolean) => void
   tweaksOpen: boolean
   setTweaksOpen: (v: boolean) => void
+  cmdOpen: boolean
+  setCmdOpen: (v: boolean) => void
 }
 
 const Ctx = createContext<ShellCtx>(null!)
@@ -37,6 +39,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [newDealOpen, setNewDealOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [tweaksOpen, setTweaksOpen] = useState(false)
+  const [cmdOpen, setCmdOpen] = useState(false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', tweaks.theme)
@@ -60,6 +63,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       newDealOpen, setNewDealOpen,
       notifOpen, setNotifOpen,
       tweaksOpen, setTweaksOpen,
+      cmdOpen, setCmdOpen,
     }}>
       {children}
     </Ctx.Provider>

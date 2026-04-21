@@ -1,15 +1,15 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { funders, deals } from '@/lib/data'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
-import { useShell } from '@/components/shell/shell-provider'
 
 export default function FundersPage() {
-  const { openFunder } = useShell()
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [type, setType] = useState('')
 
@@ -53,7 +53,7 @@ export default function FundersPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16, marginTop: 16, marginBottom: 20 }}>
         {filtered.map(f => (
-          <div key={f.id} className="card" style={{ padding: 20, cursor: 'pointer' }} onClick={() => openFunder(f)}>
+          <div key={f.id} className="card" style={{ padding: 20, cursor: 'pointer' }} onClick={() => router.push(`/funders/${f.id}`)}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, background: `oklch(0.65 0.18 ${f.hue})`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14, fontFamily: 'var(--font-mono)' }}>
                 {f.name.charAt(0)}
@@ -78,6 +78,15 @@ export default function FundersPage() {
             </div>
           </div>
         ))}
+        {filtered.length === 0 && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <div className="empty-state">
+              <div className="empty-state-icon"><Icons.Search /></div>
+              <p className="empty-state-title">No results found</p>
+              <p className="empty-state-sub">Try adjusting your search or filters</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -92,7 +101,7 @@ export default function FundersPage() {
             </thead>
             <tbody>
               {filtered.map(f => (
-                <tr key={f.id} onClick={() => openFunder(f)}>
+                <tr key={f.id} onClick={() => router.push(`/funders/${f.id}`)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 28, height: 28, borderRadius: 6, background: `oklch(0.65 0.18 ${f.hue})`, flexShrink: 0 }} />
@@ -106,6 +115,15 @@ export default function FundersPage() {
                   <td className="num">{f.dealCount}</td>
                 </tr>
               ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={6}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon"><Icons.Search /></div>
+                    <p className="empty-state-title">No results found</p>
+                    <p className="empty-state-sub">Try adjusting your search or filters</p>
+                  </div>
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>

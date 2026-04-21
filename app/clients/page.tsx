@@ -1,5 +1,6 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { clients, deals } from '@/lib/data'
@@ -12,6 +13,7 @@ const ratingTone = (r: string) => r.startsWith('A') ? 'pos' : r.startsWith('B') 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
 
 export default function ClientsPage() {
+  const router = useRouter()
   const { openDeal } = useShell()
   const [search, setSearch] = useState('')
   const [sector, setSector] = useState('')
@@ -59,7 +61,7 @@ export default function ClientsPage() {
                 const clientDeals = deals.filter(d => d.clientId === c.id)
                 const latestDeal = clientDeals.sort((a, b) => b.closed.localeCompare(a.closed))[0]
                 return (
-                  <tr key={c.id} onClick={() => latestDeal && openDeal(latestDeal)}>
+                  <tr key={c.id} onClick={() => router.push(`/clients/${c.id}`)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={c.company} hue={hueFromId(c.id)} size="md" />
@@ -78,7 +80,13 @@ export default function ClientsPage() {
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--ink-4)' }}>No clients match filters</td></tr>
+                <tr><td colSpan={6}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon"><Icons.Search /></div>
+                    <p className="empty-state-title">No results found</p>
+                    <p className="empty-state-sub">Try adjusting your search or filters</p>
+                  </div>
+                </td></tr>
               )}
             </tbody>
           </table>

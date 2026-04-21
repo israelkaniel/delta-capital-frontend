@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useShell } from './shell-provider'
 import { Drawer, Modal } from '@/components/ui/drawer'
+import { CommandPalette } from '@/components/ui/command-palette'
 import { Icons } from '@/lib/icons'
 import { Avatar, AvatarStack } from '@/components/ui/avatar'
 import { StatusPill, Pill } from '@/components/ui/pill'
@@ -743,7 +744,7 @@ function NewDealWizard() {
 
 // ─── Main export: all overlays ─────────────────────────────────────────────────
 export function ShellOverlays() {
-  const { drawer, closeDrawer } = useShell()
+  const { drawer, closeDrawer, cmdOpen, setCmdOpen } = useShell()
 
   return (
     <>
@@ -756,6 +757,7 @@ export function ShellOverlays() {
       </Drawer>
       <NotificationsPanel />
       <NewDealWizard />
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
     </>
   )
 }

@@ -1,17 +1,17 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { agents, commissions, deals } from '@/lib/data'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
-import { useShell } from '@/components/shell/shell-provider'
 
 const tierOrder = { Partner: 0, Senior: 1, Mid: 2, Junior: 3 }
 
 export default function AgentsPage() {
-  const { openAgent } = useShell()
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [tier, setTier] = useState('')
   const [view, setView] = useState<'grid' | 'table'>('grid')
@@ -62,7 +62,7 @@ export default function AgentsPage() {
       {view === 'grid' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16, marginTop: 16 }}>
           {filtered.map(a => (
-            <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer' }} onClick={() => openAgent(a)}>
+            <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer' }} onClick={() => router.push(`/agents/${a.id}`)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
                 <Avatar name={a.name} hue={a.hue} size="lg" />
                 <div style={{ flex: 1 }}>
@@ -86,6 +86,15 @@ export default function AgentsPage() {
               {!a.active && <div style={{ marginTop: 10, fontSize: 11, color: 'var(--neg)' }}>Inactive</div>}
             </div>
           ))}
+          {filtered.length === 0 && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div className="empty-state">
+                <div className="empty-state-icon"><Icons.Search /></div>
+                <p className="empty-state-title">No results found</p>
+                <p className="empty-state-sub">Try adjusting your search or filters</p>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="card" style={{ marginTop: 16 }}>
@@ -100,7 +109,7 @@ export default function AgentsPage() {
               </thead>
               <tbody>
                 {filtered.map(a => (
-                  <tr key={a.id} onClick={() => openAgent(a)}>
+                  <tr key={a.id} onClick={() => router.push(`/agents/${a.id}`)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={a.name} hue={a.hue} size="md" />
@@ -115,6 +124,15 @@ export default function AgentsPage() {
                     <td><Pill tone={a.active ? 'pos' : 'neg'}>{a.active ? 'Active' : 'Inactive'}</Pill></td>
                   </tr>
                 ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={7}>
+                    <div className="empty-state">
+                      <div className="empty-state-icon"><Icons.Search /></div>
+                      <p className="empty-state-title">No results found</p>
+                      <p className="empty-state-sub">Try adjusting your search or filters</p>
+                    </div>
+                  </td></tr>
+                )}
               </tbody>
             </table>
           </div>
