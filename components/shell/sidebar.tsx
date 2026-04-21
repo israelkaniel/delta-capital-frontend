@@ -16,6 +16,7 @@ const groups: NavGroup[] = [
   { label: 'Pipeline', items: [
     { k: '/deals',       label: 'Deals',            Icon: Icons.Deal,     countFn: () => deals.length },
     { k: '/commissions', label: 'Commissions',       Icon: Icons.Coin,     countFn: () => commissions.length },
+    { k: '/ledger',      label: 'Ledger',            Icon: Icons.Ledger,   countFn: () => agents.filter(a => a.active).length },
     { k: '/monthly',     label: 'Monthly Summaries', Icon: Icons.Calendar },
   ]},
   { label: 'Directory', items: [
