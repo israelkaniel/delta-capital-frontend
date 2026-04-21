@@ -759,7 +759,7 @@ function NewDealWizard() {
   }
 
   return (
-    <Modal open={newDealOpen} onClose={close}>
+    <Modal open={newDealOpen} onClose={close} wide>
       <div className="modal-head">
         <div style={{ flex: 1 }}>
           <h2>New Deal</h2>

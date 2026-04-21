@@ -7,6 +7,11 @@ export type Funder = {
   id: string; name: string; type: string; ticket: string; avail: number; hue: number;
   createdAt?: string; updatedAt?: string; createdBy?: string; updatedBy?: string;
 }
+export type FunderRule = {
+  id: string; funderId: string; name: string; type: string;
+  rate: number; rateLabel: string; condition: string;
+  active: boolean; notes?: string;
+}
 export type Client = {
   id: string; company: string; sector: string; since: string;
   openDeals: number; exposure: number; rating: string;
@@ -222,6 +227,18 @@ export function ledgerAvailableImpact(e: LedgerEntry): number {
     default:                   return 0
   }
 }
+
+export const funderRules: FunderRule[] = [
+  { id: 'FR-01', funderId: 'FN-01', name: 'Meridian Premium Rate',     type: 'Funder',   rate: 2.25, rateLabel: '2.25%',  condition: 'All deals',              active: true,  notes: 'Base funder rate for all Meridian deals' },
+  { id: 'FR-02', funderId: 'FN-01', name: 'Meridian Large Deal Bonus', type: 'Bonus',    rate: 0.25, rateLabel: '+0.25%', condition: 'Deal amount > $2M',       active: true,  notes: 'Additional bonus on large transactions' },
+  { id: 'FR-03', funderId: 'FN-02', name: 'Harbor Lane Standard',      type: 'Funder',   rate: 2.00, rateLabel: '2.00%',  condition: 'All deals',              active: true,  notes: 'Standard rate, no additional bonuses' },
+  { id: 'FR-04', funderId: 'FN-02', name: 'Harbor Revolving Discount', type: 'Override', rate: 1.75, rateLabel: '1.75%',  condition: 'Product: Revolving',     active: false, notes: 'Reduced rate for revolving facilities — currently inactive' },
+  { id: 'FR-05', funderId: 'FN-03', name: 'Oakstone Family Rate',      type: 'Funder',   rate: 2.50, rateLabel: '2.50%',  condition: 'All deals',              active: true  },
+  { id: 'FR-06', funderId: 'FN-04', name: 'In-house Book Rate',        type: 'Borrower', rate: 3.00, rateLabel: '3.00%',  condition: 'In-house funded deals',  active: true,  notes: 'Origination fee charged to borrower' },
+  { id: 'FR-07', funderId: 'FN-05', name: 'North Ridge Large Cap',     type: 'Funder',   rate: 1.75, rateLabel: '1.75%',  condition: 'Deal amount > $5M',      active: true,  notes: 'Discounted rate for institutional large deals' },
+  { id: 'FR-08', funderId: 'FN-05', name: 'North Ridge Standard',      type: 'Funder',   rate: 2.00, rateLabel: '2.00%',  condition: 'Deal amount ≤ $5M',      active: true  },
+  { id: 'FR-09', funderId: 'FN-06', name: 'Prism Bridge Rate',         type: 'Funder',   rate: 2.75, rateLabel: '2.75%',  condition: 'Product: Bridge',        active: true,  notes: 'Premium rate for bridge financing' },
+]
 
 export const agentById = (id: string) => agents.find(a => a.id === id)
 export const dealById  = (id: string) => deals.find(d => d.id === id)

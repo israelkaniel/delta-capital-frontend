@@ -18,7 +18,7 @@ export function Drawer({ open, onClose, children }: { open: boolean; onClose: ()
   )
 }
 
-export function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+export function Modal({ open, onClose, children, wide }: { open: boolean; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     if (open) window.addEventListener('keydown', onKey)
@@ -28,7 +28,7 @@ export function Modal({ open, onClose, children }: { open: boolean; onClose: () 
   if (!open) return null
   return (
     <div className="modal-overlay open" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className={`modal${wide ? ' modal-wide' : ''}`} onClick={e => e.stopPropagation()}>
         {children}
       </div>
     </div>

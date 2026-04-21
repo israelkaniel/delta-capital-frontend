@@ -4,8 +4,9 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { funders, deals } from '@/lib/data'
-import { StatusPill, Pill } from '@/components/ui/pill'
+import { funders, deals, funderRules as allFunderRules } from '@/lib/data'
+import type { FunderRule } from '@/lib/data'
+import { Pill, StatusPill } from '@/components/ui/pill'
 
 // ── Actions menu ───────────────────────────────────────────────────────────
 function ActionsMenu({ funderId, funderName }: { funderId: string; funderName: string }) {
@@ -64,6 +65,159 @@ function ActionsMenu({ funderId, funderName }: { funderId: string; funderName: s
         </div>
       )}
     </div>
+  )
+}
+
+// ── Rule type badge colors ─────────────────────────────────────────────────
+const ruleTypeTone = (t: string) =>
+  t === 'Funder' ? 'accent' : t === 'Bonus' ? 'pos' : t === 'Override' ? 'warn' : t === 'Borrower' ? 'info' : 'default'
+
+// ── Commission Rules card ──────────────────────────────────────────────────
+function CommissionRulesCard({ funderId }: { funderId: string }) {
+  const [rules, setRules] = useState<FunderRule[]>(
+    allFunderRules.filter(r => r.funderId === funderId)
+  )
+  const [editing, setEditing] = useState<FunderRule | null>(null)
+  const [draft, setDraft] = useState<FunderRule | null>(null)
+  const [adding, setAdding] = useState(false)
+  const BLANK: FunderRule = { id: '', funderId, name: '', type: 'Funder', rate: 0, rateLabel: '', condition: '', active: true, notes: '' }
+
+  const openEdit = (r: FunderRule) => { setEditing(r); setDraft({ ...r }); setAdding(false) }
+  const openAdd  = () => { setEditing(BLANK); setDraft({ ...BLANK, id: `FR-${Date.now()}` }); setAdding(true) }
+  const close    = () => { setEditing(null); setDraft(null) }
+
+  const save = () => {
+    if (!draft) return
+    const rateNum = parseFloat(String(draft.rate)) || 0
+    const label = (rateNum > 0 && !String(draft.rateLabel).startsWith('+') ? '' : '') + (draft.rateLabel || `${rateNum}%`)
+    const final = { ...draft, rate: rateNum, rateLabel: draft.rateLabel || `${rateNum}%` }
+    if (adding) setRules(rs => [...rs, final])
+    else setRules(rs => rs.map(r => r.id === final.id ? final : r))
+    close()
+  }
+
+  const toggle = (id: string) => setRules(rs => rs.map(r => r.id === id ? { ...r, active: !r.active } : r))
+  const remove = (id: string) => { setRules(rs => rs.filter(r => r.id !== id)); close() }
+
+  return (
+    <>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-head">
+          <div>
+            <h3>Commission Rules <span className="badge" style={{ marginLeft: 4 }}>{rules.length}</span></h3>
+            <div className="sub">{rules.filter(r => r.active).length} active · funder-specific rates and overrides</div>
+          </div>
+          <button className="btn sm" onClick={openAdd}><Icons.Plus /> Add rule</button>
+        </div>
+
+        {rules.length === 0 ? (
+          <div className="card-body" style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--ink-4)' }}>
+            No commission rules defined for this funder.{' '}
+            <span style={{ color: 'var(--accent-ink)', cursor: 'pointer' }} onClick={openAdd}>Add the first rule</span>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Rule name</th>
+                  <th>Type</th>
+                  <th>Condition</th>
+                  <th className="num">Rate</th>
+                  <th>Status</th>
+                  <th>Notes</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map(r => (
+                  <tr key={r.id} style={{ opacity: r.active ? 1 : 0.55 }}>
+                    <td><span className="strong">{r.name}</span></td>
+                    <td>
+                      <span className={`chip chip-${ruleTypeTone(r.type)}`}
+                        style={{ background: r.type === 'Funder' ? 'var(--accent-soft)' : r.type === 'Bonus' ? 'color-mix(in oklch, var(--pos) 15%, transparent)' : r.type === 'Override' ? 'color-mix(in oklch, var(--warn) 15%, transparent)' : 'color-mix(in oklch, var(--info) 15%, transparent)', color: r.type === 'Funder' ? 'var(--accent-ink)' : r.type === 'Bonus' ? 'var(--pos)' : r.type === 'Override' ? 'var(--warn)' : 'oklch(0.55 0.17 240)' }}>
+                        {r.type}
+                      </span>
+                    </td>
+                    <td className="muted" style={{ fontSize: 12 }}>{r.condition}</td>
+                    <td className="num">
+                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14, color: 'var(--accent-ink)' }}>{r.rateLabel}</span>
+                    </td>
+                    <td>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={r.active} onChange={() => toggle(r.id)} style={{ accentColor: 'var(--accent)' }} />
+                        <span style={{ fontSize: 11.5, color: r.active ? 'var(--pos)' : 'var(--ink-4)' }}>{r.active ? 'Active' : 'Inactive'}</span>
+                      </label>
+                    </td>
+                    <td className="muted" style={{ fontSize: 12, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.notes ?? '—'}</td>
+                    <td>
+                      <button className="btn sm ghost" onClick={() => openEdit(r)} style={{ fontSize: 11 }}>Edit</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Edit / Add modal */}
+      {editing && draft && (
+        <div className="modal-overlay open" onClick={close}>
+          <div className="modal" style={{ width: 'min(540px, 95vw)' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>{adding ? 'Add commission rule' : 'Edit rule'}</h2>
+              <button className="close-btn" onClick={close}><Icons.X /> Close</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="field">
+                <label>Rule name *</label>
+                <input className="input" value={draft.name} onChange={e => setDraft(d => d ? { ...d, name: e.target.value } : d)} placeholder="e.g. Standard Funder Fee" />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div className="field">
+                  <label>Type</label>
+                  <select className="input" value={draft.type} onChange={e => setDraft(d => d ? { ...d, type: e.target.value } : d)}>
+                    {['Funder','Bonus','Override','Borrower','Cap'].map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Rate</label>
+                  <div style={{ position: 'relative' }}>
+                    <input className="input" style={{ paddingRight: 28 }} value={draft.rate} onChange={e => setDraft(d => d ? { ...d, rate: parseFloat(e.target.value) || 0, rateLabel: e.target.value + '%' } : d)} placeholder="2.00" />
+                    <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', fontSize: 13 }}>%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="field">
+                <label>Rate label</label>
+                <input className="input" value={draft.rateLabel} onChange={e => setDraft(d => d ? { ...d, rateLabel: e.target.value } : d)} placeholder="e.g. 2.25% or +0.25%" />
+                <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 4 }}>How the rate appears in the system (e.g. +0.25% for a bonus, 2.25% for a flat rate)</div>
+              </div>
+              <div className="field">
+                <label>Condition</label>
+                <input className="input" value={draft.condition} onChange={e => setDraft(d => d ? { ...d, condition: e.target.value } : d)} placeholder="e.g. All deals / Deal amount > $2M / Product: Bridge" />
+              </div>
+              <div className="field">
+                <label>Notes</label>
+                <textarea className="input" rows={2} style={{ resize: 'vertical' }} value={draft.notes ?? ''} onChange={e => setDraft(d => d ? { ...d, notes: e.target.value } : d)} placeholder="Internal notes about this rule…" />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={draft.active} onChange={e => setDraft(d => d ? { ...d, active: e.target.checked } : d)} style={{ accentColor: 'var(--accent)' }} />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>Active</span>
+              </label>
+            </div>
+            <div className="modal-foot">
+              {!adding && (
+                <button className="btn ghost" style={{ color: 'var(--neg)', marginRight: 'auto' }} onClick={() => remove(draft.id)}>Delete rule</button>
+              )}
+              <button className="btn" onClick={close}>Cancel</button>
+              <button className="btn primary" onClick={save}>{adding ? 'Add rule' : 'Save changes'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -273,6 +427,9 @@ export default function FunderDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Commission Rules */}
+      <CommissionRulesCard funderId={funder.id} />
 
       {/* Deals placed — full width */}
       <div className="card">
