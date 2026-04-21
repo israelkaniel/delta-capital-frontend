@@ -4,9 +4,10 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { deals, commissions, agentById, funderById, clientById, contacts } from '@/lib/data'
+import { deals, commissions, agentById, funderById, contacts } from '@/lib/data'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
+import { useShell } from '@/components/shell/shell-provider'
 import type { Deal } from '@/lib/data'
 
 const TABS = ['Overview', 'Commissions', 'Contacts', 'Timeline']
@@ -15,9 +16,10 @@ const STAGE_OPTIONS  = ['Application', 'Term Sheet', 'Underwriting', 'Docs Signe
 
 type TimelineEvent = { id: string; text: string; when: string; type: 'system' | 'note'; author?: string }
 
-function ActionsMenu({ deal, router }: { deal: Deal; router: ReturnType<typeof useRouter> }) {
+function RecordActionsMenu({ deal, router }: { deal: Deal; router: ReturnType<typeof useRouter> }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!open) return
     const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
@@ -32,25 +34,52 @@ function ActionsMenu({ deal, router }: { deal: Deal; router: ReturnType<typeof u
     setOpen(false)
   }
 
+  const copyLink = () => {
+    navigator.clipboard.writeText(window.location.href)
+    setOpen(false)
+  }
+
+  const shareEmail = () => {
+    const subject = encodeURIComponent(`Deal ${deal.id}: ${deal.client}`)
+    const body = encodeURIComponent(`Deal: ${deal.id}\nClient: ${deal.client}\nAmount: ${fmt.money(deal.amount)}\nStatus: ${deal.status}\nFunder: ${deal.funder}\n\nView: ${window.location.href}`)
+    window.open(`mailto:?subject=${subject}&body=${body}`)
+    setOpen(false)
+  }
+
+  const shareWhatsApp = () => {
+    const text = encodeURIComponent(`Deal ${deal.id} – ${deal.client}\n${fmt.money(deal.amount)} · ${deal.status}\n${window.location.href}`)
+    window.open(`https://wa.me/?text=${text}`, '_blank')
+    setOpen(false)
+  }
+
+  type MenuItem = null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void; danger?: boolean }
+  const items: MenuItem[] = [
+    { label: 'Duplicate deal',     icon: Icons.Copy,     action: () => { alert('Duplicate — coming with backend'); setOpen(false) } },
+    null,
+    { label: 'Share via Email',    icon: Icons.Mail,     action: shareEmail },
+    { label: 'Share via WhatsApp', icon: Icons.Phone,    action: shareWhatsApp },
+    { label: 'Copy link',          icon: Icons.Link,     action: copyLink },
+    null,
+    { label: 'Print record',       icon: Icons.Print,    action: () => { window.print(); setOpen(false) } },
+    { label: 'Export CSV',         icon: Icons.Download, action: exportCSV },
+    { label: 'Export PDF',         icon: Icons.FileText, action: () => { alert('PDF export coming soon'); setOpen(false) } },
+    null,
+    { label: 'Delete deal',        icon: Icons.Trash,    action: () => { if (confirm('Delete this deal?')) router.push('/deals') }, danger: true },
+  ]
+
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div className="record-menu-wrap" ref={ref}>
       <button className="btn sm" onClick={() => setOpen(v => !v)}>
         Actions <Icons.ChevronDown style={{ width: 11, height: 11 }} />
       </button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 200, background: 'var(--bg-elev)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', minWidth: 170, overflow: 'hidden' }}>
-          {[
-            { label: 'Duplicate deal', icon: Icons.Copy, action: () => { alert('Duplicate — coming with backend'); setOpen(false) } },
-            { label: 'Export CSV', icon: Icons.Download, action: exportCSV },
-            { label: 'Export PDF', icon: Icons.FileText, action: () => { alert('PDF export coming soon'); setOpen(false) } },
-            null,
-            { label: 'Delete deal', icon: Icons.Trash, action: () => { if (confirm('Delete this deal?')) router.push('/deals') }, danger: true },
-          ].map((item, i) =>
+        <div className="record-menu">
+          {items.map((item, i) =>
             item === null
-              ? <div key={i} style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
+              ? <div key={i} className="record-menu-divider" />
               : (
-                <button key={item.label} onClick={item.action} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, color: item.danger ? 'var(--neg)' : 'var(--ink-1)', fontFamily: 'var(--font-sans)', textAlign: 'left' }}>
-                  <item.icon style={{ width: 13, height: 13 }} />{item.label}
+                <button key={item.label} onClick={item.action} className={`record-menu-item${item.danger ? ' danger' : ''}`}>
+                  <item.icon />{item.label}
                 </button>
               )
           )}
@@ -63,6 +92,7 @@ function ActionsMenu({ deal, router }: { deal: Deal; router: ReturnType<typeof u
 export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const { openAgent } = useShell()
   const [tab, setTab] = useState('Overview')
   const [deal, setDeal] = useState<Deal | undefined>(deals.find(d => d.id === id))
   const [editing, setEditing] = useState(false)
@@ -70,22 +100,22 @@ export default function DealDetailPage() {
   const [note, setNote] = useState('')
   const [timeline, setTimeline] = useState<TimelineEvent[]>([])
 
-  // Load notes + timeline from localStorage
   useEffect(() => {
     if (!deal) return
     const saved = localStorage.getItem(`deal-timeline-${deal.id}`)
     const base: TimelineEvent[] = [
-      { id: 'ev1', text: `Deal created and assigned to ${deal.agents.map(a => agentById(a)?.name.split(' ')[0]).join(', ')}`, when: deal.closed, type: 'system' },
-      { id: 'ev2', text: `Funder set to ${deal.funder}`, when: deal.closed, type: 'system' },
-      { id: 'ev3', text: `Status: ${deal.status} · Stage: ${deal.stage}`, when: deal.closed, type: 'system' },
+      { id: 'ev1', text: `Deal created and assigned to ${deal.agents.map(a => agentById(a)?.name.split(' ')[0]).join(', ')}`, when: deal.closed !== '—' ? deal.closed : deal.createdAt, type: 'system' },
+      { id: 'ev2', text: `Funder set to ${deal.funder}`, when: deal.closed !== '—' ? deal.closed : deal.createdAt, type: 'system' },
+      { id: 'ev3', text: `Status: ${deal.status} · Stage: ${deal.stage}`, when: deal.updatedAt, type: 'system' },
     ]
     setTimeline(saved ? [...JSON.parse(saved), ...base] : base)
   }, [deal?.id])
 
   const saveNote = () => {
     if (!note.trim() || !deal) return
-    const ev: TimelineEvent = { id: Date.now().toString(), text: note.trim(), when: new Date().toISOString().slice(0, 10), type: 'note', author: 'Noam Harel' }
-    const updated = [ev, ...timeline.filter(e => e.type === 'note')]
+    const ev: TimelineEvent = { id: Date.now().toString(), text: note.trim(), when: new Date().toISOString().slice(0, 10), type: 'note', author: deal.updatedBy }
+    const userNotes = timeline.filter(e => e.type === 'note')
+    const updated = [ev, ...userNotes]
     localStorage.setItem(`deal-timeline-${deal.id}`, JSON.stringify(updated))
     setTimeline(prev => [ev, ...prev])
     setNote('')
@@ -93,8 +123,17 @@ export default function DealDetailPage() {
 
   const update = (field: keyof Deal, val: string) => setDeal(prev => prev ? { ...prev, [field]: val } : prev)
 
-  const startEdit = () => { setDraft({ client: deal?.client, industry: deal?.industry, productType: deal?.productType, stage: deal?.stage }); setEditing(true) }
-  const saveEdit = () => { if (deal) { setDeal({ ...deal, ...draft as Deal }); setEditing(false) } }
+  const startEdit = () => {
+    setDraft({ client: deal?.client, industry: deal?.industry, productType: deal?.productType, stage: deal?.stage })
+    setEditing(true)
+  }
+  const saveEdit = () => {
+    if (deal) {
+      setDeal({ ...deal, ...draft as Deal, updatedAt: new Date().toISOString(), updatedBy: 'Noam Harel' })
+      setEditing(false)
+    }
+  }
+  const cancelEdit = () => setEditing(false)
 
   if (!deal) return (
     <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
@@ -114,6 +153,8 @@ export default function DealDetailPage() {
     if (t === 'Timeline') return timeline.filter(e => e.type === 'note').length || undefined
     return undefined
   }
+
+  const relTime = fmt.relTime(deal.updatedAt)
 
   return (
     <div className="page wide" style={{ padding: '20px 28px 80px' }}>
@@ -141,7 +182,6 @@ export default function DealDetailPage() {
           </div>
         </div>
         <div className="actions">
-          {/* Status change */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>Status:</span>
             <select value={deal.status} onChange={e => update('status', e.target.value)}
@@ -149,8 +189,10 @@ export default function DealDetailPage() {
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          <ActionsMenu deal={deal} router={router} />
-          <button className="btn sm ghost" onClick={() => router.push('/deals')}><Icons.X /></button>
+          <RecordActionsMenu deal={deal} router={router} />
+          <button className="close-btn" onClick={() => router.push('/deals')}>
+            <Icons.X /> Close
+          </button>
         </div>
       </div>
 
@@ -186,13 +228,19 @@ export default function DealDetailPage() {
       {tab === 'Overview' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 16 }}>
 
-          {/* Deal fields */}
-          <div className="card">
+          {/* Deal fields — card-editing class highlights entire card when editing */}
+          <div className={`card${editing ? ' card-editing' : ''}`}>
             <div className="card-head">
-              <h3>Deal details</h3>
+              <h3>
+                Deal details
+                {editing && <span className="edit-badge"><Icons.Edit style={{ width: 10, height: 10 }} /> Editing</span>}
+              </h3>
               <div className="actions">
                 {editing
-                  ? <><button className="btn sm" onClick={saveEdit}>Save</button><button className="btn sm ghost" onClick={() => setEditing(false)}>Cancel</button></>
+                  ? <>
+                      <button className="btn sm" onClick={cancelEdit}>Cancel</button>
+                      <button className="btn sm primary" onClick={saveEdit}>Save changes</button>
+                    </>
                   : <button className="btn sm ghost" onClick={startEdit}><Icons.Edit /> Edit</button>
                 }
               </div>
@@ -211,26 +259,55 @@ export default function DealDetailPage() {
                   { label: 'Closed',     value: fmt.dateShort(deal.closed),  field: null },
                   { label: 'Maturity',   value: fmt.dateShort(deal.maturity), field: null },
                 ].map((f, i, arr) => {
-                  const border = i < arr.length - 1 ? '1px solid var(--line)' : 'none'
+                  const isLast = i === arr.length - 1
                   return (
                     <div key={f.label} style={{ display: 'contents' }}>
-                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 500, padding: '13px 0 13px 20px', borderBottom: border }}>{f.label}</div>
-                      <div style={{ fontSize: 13, fontWeight: 500, padding: '11px 20px 11px 0', borderBottom: border }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 500, padding: '12px 0 12px 20px', borderBottom: isLast ? 'none' : '1px solid var(--line)' }}>{f.label}</div>
+                      <div style={{ fontSize: 13, padding: '10px 20px 10px 0', borderBottom: isLast ? 'none' : '1px solid var(--line)', display: 'flex', alignItems: 'center' }}>
                         {editing && f.field ? (
                           f.field === 'stage' ? (
-                            <select value={(draft[f.field] ?? deal[f.field]) as string} onChange={e => setDraft(d => ({ ...d, [f.field!]: e.target.value }))}
-                              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--ink-1)', fontSize: 12, outline: 'none' }}>
+                            <select
+                              value={(draft[f.field] ?? deal[f.field]) as string}
+                              onChange={e => setDraft(d => ({ ...d, [f.field!]: e.target.value }))}
+                              className="input" style={{ height: 30, fontSize: 12, width: '100%' }}>
                               {STAGE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           ) : (
-                            <input value={(draft[f.field] ?? deal[f.field]) as string} onChange={e => setDraft(d => ({ ...d, [f.field!]: e.target.value }))}
-                              style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid var(--accent)', background: 'var(--bg)', color: 'var(--ink-1)', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+                            <input
+                              value={(draft[f.field] ?? deal[f.field]) as string}
+                              onChange={e => setDraft(d => ({ ...d, [f.field!]: e.target.value }))}
+                              className="input" style={{ height: 30, fontSize: 12, width: '100%' }} />
                           )
-                        ) : f.value}
+                        ) : (
+                          <span style={{
+                            fontWeight: f.label === 'Deal ID' ? 600 : 500,
+                            color: f.label === 'Deal ID' ? 'var(--accent-ink)' : undefined,
+                            fontFamily: f.label === 'Deal ID' ? 'var(--font-mono)' : undefined,
+                          }}>
+                            {f.value}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )
                 })}
+              </div>
+            </div>
+            {/* Audit footer */}
+            <div className="audit-foot">
+              <div className="audit-col">
+                <span className="audit-lbl">Created</span>
+                <span className="audit-val">{fmt.dateTime(deal.createdAt)}</span>
+                <span className="audit-by">by <strong>{deal.createdBy}</strong></span>
+              </div>
+              <div className="audit-sep" />
+              <div className="audit-col">
+                <span className="audit-lbl">Last modified</span>
+                <span className="audit-val">
+                  {fmt.dateTime(deal.updatedAt)}
+                  {relTime && <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-sans)' }}> · {relTime}</span>}
+                </span>
+                <span className="audit-by">by <strong>{deal.updatedBy}</strong></span>
               </div>
             </div>
           </div>
@@ -258,22 +335,38 @@ export default function DealDetailPage() {
               </div>
             </div>
 
-            {/* Agents */}
+            {/* Agents — clickable rows open the agent drawer */}
             <div className="card">
-              <div className="card-head"><h3>Agents <span className="badge" style={{ marginLeft: 4 }}>{deal.agents.length}</span></h3><Link href="/agents" className="btn sm ghost" style={{ fontSize: 11 }}>View all <Icons.Chevron /></Link></div>
+              <div className="card-head">
+                <h3>Agents <span className="badge" style={{ marginLeft: 4 }}>{deal.agents.length}</span></h3>
+                <Link href="/agents" className="btn sm ghost" style={{ fontSize: 11 }}>View all <Icons.Chevron /></Link>
+              </div>
               <div className="card-body flush">
                 {deal.agents.map((aid, i) => {
                   const a = agentById(aid)
                   if (!a) return null
                   return (
-                    <div key={aid} style={{ padding: '11px 18px', borderBottom: i < deal.agents.length - 1 ? '1px solid var(--line)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                      key={aid}
+                      onClick={() => openAgent(a)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        width: '100%', padding: '11px 18px',
+                        borderBottom: i < deal.agents.length - 1 ? '1px solid var(--line)' : 'none',
+                        background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                    >
                       <Avatar name={a.name} hue={a.hue} size="md" />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{a.name}</div>
                         <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{a.tier}</div>
                       </div>
                       <Pill tone={a.tier === 'Partner' ? 'accent' : a.tier === 'Senior' ? 'pos' : 'default'}>{a.tier}</Pill>
-                    </div>
+                      <Icons.Chevron style={{ width: 12, height: 12, color: 'var(--ink-4)' }} />
+                    </button>
                   )
                 })}
               </div>
@@ -308,10 +401,10 @@ export default function DealDetailPage() {
                             {c.splits.map(s => {
                               const a = agentById(s.agentId)
                               return a ? (
-                                <div key={s.agentId} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                                <button key={s.agentId} onClick={() => openAgent(a)} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                                   <Avatar name={a.name} hue={a.hue} size="sm" />
-                                  <span>{a.name.split(' ')[0]} {s.pct}%</span>
-                                </div>
+                                  <span style={{ color: 'var(--accent-ink)', fontWeight: 500 }}>{a.name.split(' ')[0]} {s.pct}%</span>
+                                </button>
                               ) : null
                             })}
                           </div>
@@ -376,16 +469,18 @@ export default function DealDetailPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
           {/* Note composer */}
           <div className="card">
-            <div className="card-body">
+            <div className="card-head"><h3>Add note</h3></div>
+            <div className="note-composer" style={{ borderRadius: 0, border: 'none' }}>
               <textarea
-                value={note} onChange={e => setNote(e.target.value)}
+                value={note}
+                onChange={e => setNote(e.target.value)}
                 placeholder="Add a note, call log, or update…"
-                style={{ width: '100%', minHeight: 80, background: 'var(--bg-sunk)', border: '1px solid var(--line)', borderRadius: 6, padding: '10px 12px', fontSize: 13, color: 'var(--ink-1)', fontFamily: 'var(--font-sans)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
                 onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveNote() }}
               />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+              <div className="note-composer-foot">
+                <span className="note-composer-hint">Press ⌘↵ to submit quickly</span>
                 <button className="btn sm primary" onClick={saveNote} disabled={!note.trim()}>
-                  Add note <span style={{ opacity: 0.6, fontSize: 10, marginLeft: 4 }}>⌘↵</span>
+                  Add note
                 </button>
               </div>
             </div>
@@ -393,7 +488,7 @@ export default function DealDetailPage() {
 
           {/* Timeline events */}
           <div className="card">
-            <div className="card-head"><h3>Timeline</h3></div>
+            <div className="card-head"><h3>Timeline</h3><span className="sub" style={{ marginLeft: 'auto' }}>{timeline.length} events</span></div>
             <div className="card-body flush">
               {timeline.map((ev, i) => (
                 <div key={ev.id} style={{ padding: '14px 18px', borderBottom: i < timeline.length - 1 ? '1px solid var(--line)' : 'none', display: 'flex', gap: 12 }}>
@@ -406,7 +501,7 @@ export default function DealDetailPage() {
                     {i < timeline.length - 1 && <div style={{ width: 1, flex: 1, background: 'var(--line)', minHeight: 16 }} />}
                   </div>
                   <div style={{ flex: 1, paddingTop: 4 }}>
-                    <div style={{ fontSize: 13, fontWeight: ev.type === 'note' ? 500 : 400, color: 'var(--ink-1)' }}>{ev.text}</div>
+                    <div style={{ fontSize: 13, fontWeight: ev.type === 'note' ? 500 : 400 }}>{ev.text}</div>
                     <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 4, display: 'flex', gap: 8 }}>
                       <span>{fmt.dateShort(ev.when)}</span>
                       {ev.author && <><span>·</span><span>{ev.author}</span></>}

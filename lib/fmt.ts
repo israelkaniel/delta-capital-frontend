@@ -29,4 +29,26 @@ export const fmt = {
     if (!name) return '?'
     return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
   },
+  dateTime: (s: string) => {
+    if (!s || s === '—') return '—'
+    try {
+      const d = new Date(s)
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+        ' · ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    } catch { return s }
+  },
+  relTime: (s: string) => {
+    if (!s || s === '—') return ''
+    try {
+      const diff = Date.now() - new Date(s).getTime()
+      const mins = Math.floor(diff / 60000)
+      if (mins < 2) return 'just now'
+      if (mins < 60) return `${mins}m ago`
+      const hrs = Math.floor(mins / 60)
+      if (hrs < 24) return `${hrs}h ago`
+      const days = Math.floor(hrs / 24)
+      if (days < 30) return `${days}d ago`
+      return ''
+    } catch { return '' }
+  },
 }

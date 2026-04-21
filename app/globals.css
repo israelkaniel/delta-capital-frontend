@@ -525,3 +525,85 @@ textarea.input { height: auto; padding: 8px 10px; min-height: 70px; resize: vert
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .fade-up { animation: fadeUp 0.25s ease; }
+
+/* ── EDIT MODE ────────────────────────────────────────────────────── */
+.card-editing {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+.card-editing .card-head {
+  background: var(--accent-soft);
+  border-bottom-color: color-mix(in oklch, var(--accent) 30%, transparent);
+}
+.edit-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent-ink); background: var(--bg-elev);
+  border: 1px solid color-mix(in oklch, var(--accent) 40%, transparent);
+  padding: 2px 8px; border-radius: 999px; margin-left: 8px;
+}
+
+/* ── AUDIT FOOTER ─────────────────────────────────────────────────── */
+.audit-foot {
+  display: flex; align-items: stretch; gap: 18px;
+  padding: 11px 18px; border-top: 1px solid var(--line);
+  background: var(--bg-sunk); font-size: 12px;
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+.audit-col { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.audit-lbl { font-size: 10px; font-weight: 600; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.06em; }
+.audit-val { color: var(--ink-1); font-family: var(--font-mono); font-size: 11.5px; }
+.audit-by  { color: var(--ink-3); font-size: 11.5px; }
+.audit-by strong { color: var(--ink-2); font-weight: 500; }
+.audit-sep { width: 1px; background: var(--line); flex-shrink: 0; align-self: stretch; }
+
+/* ── CLOSE BUTTON (labelled) ──────────────────────────────────────── */
+.close-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 10px; border-radius: var(--r-sm);
+  font-size: 12px; font-weight: 500; color: var(--ink-3);
+  background: var(--bg-elev); border: 1px solid var(--line);
+  transition: background 0.1s, color 0.1s, border-color 0.1s; white-space: nowrap; flex-shrink: 0;
+}
+.close-btn:hover { background: var(--bg-hover); border-color: var(--line-strong); color: var(--ink-1); }
+.close-btn svg { width: 12px; height: 12px; }
+
+/* ── RECORD ACTIONS DROPDOWN ──────────────────────────────────────── */
+.record-menu-wrap { position: relative; }
+.record-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 200;
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: 9px; box-shadow: 0 6px 24px rgba(0,0,0,0.13);
+  min-width: 196px; overflow: hidden; padding: 4px 0;
+}
+.record-menu-item {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 8px 14px; background: none; border: none;
+  cursor: pointer; font-size: 12.5px; font-weight: 400;
+  color: var(--ink-1); font-family: var(--font-sans); text-align: left;
+  transition: background 0.07s;
+}
+.record-menu-item:hover { background: var(--bg-hover); }
+.record-menu-item.danger { color: var(--neg); }
+.record-menu-item.danger:hover { background: var(--neg-soft); }
+.record-menu-item svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--ink-3); }
+.record-menu-item.danger svg { color: var(--neg); }
+.record-menu-divider { height: 1px; background: var(--line); margin: 3px 0; }
+
+/* ── NOTE COMPOSER ────────────────────────────────────────────────── */
+.note-composer {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.note-composer textarea {
+  width: 100%; min-height: 70px; resize: vertical; box-sizing: border-box;
+  background: var(--bg-sunk); border: 1px solid var(--line);
+  border-radius: 6px; padding: 9px 12px;
+  font-size: 13px; color: var(--ink-1);
+  font-family: var(--font-sans); outline: none;
+  transition: border-color 0.1s;
+}
+.note-composer textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.note-composer-foot { display: flex; align-items: center; justify-content: space-between; }
+.note-composer-hint { font-size: 11px; color: var(--ink-4); }

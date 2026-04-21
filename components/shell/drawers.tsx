@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useShell } from './shell-provider'
 import { Drawer, Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
@@ -10,19 +10,112 @@ import { fmt } from '@/lib/fmt'
 import { agentById, dealById, funderById, deals, commissions, contacts, monthly, notifications, tasks } from '@/lib/data'
 import type { Deal, Commission, Agent, Client, Funder } from '@/lib/data'
 
+// ─── Shared: Record Actions Dropdown ──────────────────────────────────────────
+function DrawerMoreMenu({ items }: { items: Array<null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void; danger?: boolean }> }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  return (
+    <div className="record-menu-wrap" ref={ref}>
+      <button className="btn sm ghost" onClick={() => setOpen(v => !v)} title="More actions">
+        <Icons.MoreH />
+      </button>
+      {open && (
+        <div className="record-menu">
+          {items.map((item, i) =>
+            item === null
+              ? <div key={i} className="record-menu-divider" />
+              : (
+                <button key={item.label} onClick={() => { item.action(); setOpen(false) }} className={`record-menu-item${item.danger ? ' danger' : ''}`}>
+                  <item.icon />{item.label}
+                </button>
+              )
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Shared: Audit Footer ──────────────────────────────────────────────────────
+function AuditFoot({ createdAt, updatedAt, createdBy, updatedBy }: { createdAt?: string; updatedAt?: string; createdBy?: string; updatedBy?: string }) {
+  if (!createdAt && !updatedAt) return null
+  return (
+    <div className="audit-foot">
+      {createdAt && (
+        <div className="audit-col">
+          <span className="audit-lbl">Created</span>
+          <span className="audit-val">{fmt.dateTime(createdAt)}</span>
+          {createdBy && <span className="audit-by">by <strong>{createdBy}</strong></span>}
+        </div>
+      )}
+      {createdAt && updatedAt && <div className="audit-sep" />}
+      {updatedAt && (
+        <div className="audit-col">
+          <span className="audit-lbl">Last modified</span>
+          <span className="audit-val">
+            {fmt.dateTime(updatedAt)}
+            {fmt.relTime(updatedAt) && <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-sans)' }}> · {fmt.relTime(updatedAt)}</span>}
+          </span>
+          {updatedBy && <span className="audit-by">by <strong>{updatedBy}</strong></span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Deal Detail ───────────────────────────────────────────────────────────────
 function DealDetail({ deal }: { deal: Deal }) {
   const [tab, setTab] = useState('overview')
-  const { closeDrawer } = useShell()
+  const [note, setNote] = useState('')
+  const [notes, setNotes] = useState<Array<{ id: string; text: string; when: string; author: string }>>([])
+  const { closeDrawer, openAgent } = useShell()
   const relatedCommissions = commissions.filter(c => c.dealId === deal.id)
   const funder = funderById(deal.funderId)
   const stages = ['Application','Term Sheet','Credit Review','Underwriting','Docs Signed','Funded']
   const curStage = stages.indexOf(deal.stage)
 
+  useEffect(() => {
+    const saved = localStorage.getItem(`drawer-notes-${deal.id}`)
+    if (saved) setNotes(JSON.parse(saved))
+  }, [deal.id])
+
+  const saveNote = () => {
+    if (!note.trim()) return
+    const n = { id: Date.now().toString(), text: note.trim(), when: new Date().toISOString().slice(0, 10), author: deal.updatedBy }
+    const updated = [n, ...notes]
+    localStorage.setItem(`drawer-notes-${deal.id}`, JSON.stringify(updated))
+    setNotes(updated)
+    setNote('')
+  }
+
+  const moreItems: Array<null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void; danger?: boolean }> = [
+    { label: 'Open full record', icon: Icons.Deal, action: () => { window.location.href = `/deals/${deal.id}` } },
+    { label: 'Duplicate deal',   icon: Icons.Copy,     action: () => alert('Duplicate — coming with backend') },
+    null,
+    { label: 'Share via Email',  icon: Icons.Mail,     action: () => window.open(`mailto:?subject=Deal ${deal.id}&body=${encodeURIComponent(window.location.origin + '/deals/' + deal.id)}`) },
+    { label: 'Copy link',        icon: Icons.Link,     action: () => navigator.clipboard.writeText(`${window.location.origin}/deals/${deal.id}`) },
+    { label: 'Print',            icon: Icons.Print,    action: () => window.print() },
+    { label: 'Export CSV',       icon: Icons.Download, action: () => {
+      const row = [deal.id, `"${deal.client}"`, deal.amount, deal.rate, deal.status, deal.funder].join(',')
+      const blob = new Blob([`ID,Client,Amount,Rate,Status,Funder\n${row}`], { type: 'text/csv' })
+      Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${deal.id}.csv` }).click()
+    }},
+    null,
+    { label: 'Delete deal',      icon: Icons.Trash,    action: () => { if (confirm('Delete this deal?')) closeDrawer() }, danger: true },
+  ]
+
   return (
     <>
       <div className="drawer-head">
-        <button className="tb-icon-btn" onClick={closeDrawer}><Icons.X /></button>
+        <button className="close-btn" onClick={closeDrawer}><Icons.X /> Close</button>
         <div className="title" style={{ flex: 1 }}>
           <h2>{deal.client}</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
@@ -31,7 +124,7 @@ function DealDetail({ deal }: { deal: Deal }) {
             <span className="chip">{deal.productType}</span>
           </div>
         </div>
-        <button className="btn sm"><Icons.MoreH /></button>
+        <DrawerMoreMenu items={moreItems} />
       </div>
 
       <div style={{ padding: '0 20px', borderBottom: '1px solid var(--line)' }}>
@@ -42,14 +135,17 @@ function DealDetail({ deal }: { deal: Deal }) {
               {t === 'commissions' && relatedCommissions.length > 0 && (
                 <span className="chip" style={{ marginLeft: 6, height: 18, padding: '0 6px', fontSize: 10.5 }}>{relatedCommissions.length}</span>
               )}
+              {t === 'activity' && notes.length > 0 && (
+                <span className="chip" style={{ marginLeft: 6, height: 18, padding: '0 6px', fontSize: 10.5 }}>{notes.length}</span>
+              )}
             </div>
           ))}
         </div>
       </div>
 
-      <div className="drawer-body">
+      <div className="drawer-body" style={{ padding: 0 }}>
         {tab === 'overview' && (
-          <div className="vstack" style={{ gap: 20 }}>
+          <div className="vstack" style={{ gap: 20, padding: 20 }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 10, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Stage</div>
               <div style={{ display: 'flex', gap: 4 }}>
@@ -81,6 +177,7 @@ function DealDetail({ deal }: { deal: Deal }) {
               </div>
             </div>
 
+            {/* Agents — clickable rows navigate to agent drawer */}
             <div className="card">
               <div className="card-head"><h3>Agents on deal</h3></div>
               <div className="card-body flush">
@@ -90,22 +187,43 @@ function DealDetail({ deal }: { deal: Deal }) {
                   const split = c?.splits.find(s => s.agentId === aid)
                   if (!a) return null
                   return (
-                    <div key={aid} style={{ padding: '12px 18px', borderBottom: i < deal.agents.length - 1 ? '1px solid var(--line)' : 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button
+                      key={aid}
+                      onClick={() => openAgent(a)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        width: '100%', padding: '12px 18px',
+                        borderBottom: i < deal.agents.length - 1 ? '1px solid var(--line)' : 'none',
+                        background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                    >
                       <Avatar name={a.name} hue={a.hue} size="md" />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{a.name}</div>
                         <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{a.tier} · {a.email}</div>
                       </div>
                       {split && <Pill tone="accent">{split.pct}% split</Pill>}
-                    </div>
+                      <Icons.Chevron style={{ width: 12, height: 12, color: 'var(--ink-4)' }} />
+                    </button>
                   )
                 })}
               </div>
             </div>
+
+            <AuditFoot
+              createdAt={deal.createdAt}
+              updatedAt={deal.updatedAt}
+              createdBy={deal.createdBy}
+              updatedBy={deal.updatedBy}
+            />
           </div>
         )}
+
         {tab === 'commissions' && (
-          <div className="card">
+          <div className="card" style={{ margin: 20 }}>
             <div className="table-wrap">
               <table className="tbl">
                 <thead><tr><th>Commission</th><th>Period</th><th className="num">Gross</th><th>Source</th><th>Status</th></tr></thead>
@@ -124,8 +242,9 @@ function DealDetail({ deal }: { deal: Deal }) {
             </div>
           </div>
         )}
+
         {tab === 'documents' && (
-          <div className="card">
+          <div className="card" style={{ margin: 20 }}>
             <div className="card-body flush">
               {['Term Sheet v3.pdf','Credit Memo.pdf','Signed Loan Agreement.pdf','Personal Guarantee.pdf','UCC Filing.pdf'].map((d, i) => (
                 <div key={i} style={{ padding: '12px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -138,26 +257,56 @@ function DealDetail({ deal }: { deal: Deal }) {
             </div>
           </div>
         )}
+
         {tab === 'activity' && (
-          <div className="card">
-            <div className="card-body flush">
-              {[
-                { t: 'Deal funded', w: 'Mar 18, 2026', by: 'Meridian ops' },
-                { t: 'Docs signed by borrower', w: 'Mar 16, 2026', by: 'Samira Ghosh' },
-                { t: 'Underwriting cleared', w: 'Mar 12, 2026', by: 'Credit committee' },
-                { t: 'Term sheet accepted', w: 'Feb 24, 2026', by: 'Noam Harel' },
-                { t: 'Application submitted', w: 'Feb 10, 2026', by: 'Ari Segal' },
-              ].map((a, i) => (
-                <div key={i} style={{ padding: '12px 18px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 10 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', marginTop: 6, flexShrink: 0 }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{a.t}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{a.by}</div>
-                  </div>
-                  <span className="text-xs muted-2 mono">{a.w}</span>
-                </div>
-              ))}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {/* Note composer */}
+            <div className="note-composer">
+              <textarea
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder="Add a note or activity log…"
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveNote() }}
+              />
+              <div className="note-composer-foot">
+                <span className="note-composer-hint">⌘↵ to submit</span>
+                <button className="btn sm primary" onClick={saveNote} disabled={!note.trim()}>Add note</button>
+              </div>
             </div>
+
+            {/* User notes */}
+            {notes.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                {notes.map((n, i) => (
+                  <div key={n.id} style={{ padding: '12px 20px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 10 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', marginTop: 5, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{n.text}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 3 }}>{n.author} · {fmt.dateShort(n.when)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* System activity */}
+            <div style={{ padding: '10px 20px 6px', fontSize: 10, fontWeight: 600, color: 'var(--ink-4)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>System events</div>
+            {[
+              { t: 'Deal funded', w: 'Mar 18, 2026', by: 'Meridian ops' },
+              { t: 'Docs signed by borrower', w: 'Mar 16, 2026', by: 'Samira Ghosh' },
+              { t: 'Underwriting cleared', w: 'Mar 12, 2026', by: 'Credit committee' },
+              { t: 'Term sheet accepted', w: 'Feb 24, 2026', by: 'Noam Harel' },
+              { t: 'Application submitted', w: 'Feb 10, 2026', by: 'Ari Segal' },
+            ].map((a, i) => (
+              <div key={i} style={{ padding: '12px 20px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 10 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ink-5)', marginTop: 6, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13 }}>{a.t}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{a.by}</div>
+                </div>
+                <span className="text-xs muted-2 mono">{a.w}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -173,10 +322,16 @@ function CommissionDetail({ commission }: { commission: Commission }) {
   const approve = () => { alert(`Approved ${commission.id} · ${fmt.money(commission.value)}`); closeDrawer() }
   const reject  = () => { alert(`Rejected ${commission.id}`); closeDrawer() }
 
+  const moreItems: Array<null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void; danger?: boolean }> = [
+    { label: 'Copy link',  icon: Icons.Link,     action: () => navigator.clipboard.writeText(window.location.href) },
+    { label: 'Print',      icon: Icons.Print,    action: () => window.print() },
+    { label: 'Export CSV', icon: Icons.Download, action: () => {} },
+  ]
+
   return (
     <>
       <div className="drawer-head">
-        <button className="tb-icon-btn" onClick={closeDrawer}><Icons.X /></button>
+        <button className="close-btn" onClick={closeDrawer}><Icons.X /> Close</button>
         <div className="title">
           <h2>Commission {commission.id}</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
@@ -184,7 +339,7 @@ function CommissionDetail({ commission }: { commission: Commission }) {
             <StatusPill status={commission.status} />
           </div>
         </div>
-        <button className="btn sm"><Icons.Print /></button>
+        <DrawerMoreMenu items={moreItems} />
       </div>
       <div className="drawer-body">
         <div className="card" style={{ marginBottom: 16 }}>
@@ -256,10 +411,18 @@ function AgentDetail({ agent }: { agent: Agent }) {
     return acc + c.value * ((s?.pct ?? 0) / 100)
   }, 0)
 
+  const moreItems: Array<null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void; danger?: boolean }> = [
+    { label: 'View full record', icon: Icons.Agent, action: () => { window.location.href = `/agents/${agent.id}` } },
+    null,
+    { label: 'Send email',  icon: Icons.Mail,  action: () => window.open(`mailto:${agent.email}`) },
+    { label: 'Copy link',   icon: Icons.Link,  action: () => navigator.clipboard.writeText(`${window.location.origin}/agents/${agent.id}`) },
+    { label: 'Print',       icon: Icons.Print, action: () => window.print() },
+  ]
+
   return (
     <>
       <div className="drawer-head">
-        <button className="tb-icon-btn" onClick={closeDrawer}><Icons.X /></button>
+        <button className="close-btn" onClick={closeDrawer}><Icons.X /> Close</button>
         <div className="title" style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1 }}>
           <Avatar name={agent.name} hue={agent.hue} size="lg" />
           <div>
@@ -270,6 +433,7 @@ function AgentDetail({ agent }: { agent: Agent }) {
             </div>
           </div>
         </div>
+        <DrawerMoreMenu items={moreItems} />
       </div>
       <div className="drawer-body">
         <div className="grid-3" style={{ marginBottom: 20 }}>
@@ -302,6 +466,19 @@ function AgentDetail({ agent }: { agent: Agent }) {
             </table>
           </div>
         </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 0 4px' }}>
+          <a href={`/agents/${agent.id}`} className="btn sm ghost" style={{ fontSize: 11.5 }}>
+            View full record <Icons.Chevron style={{ width: 12, height: 12 }} />
+          </a>
+        </div>
+        {agent.createdAt && (
+          <AuditFoot
+            createdAt={agent.createdAt}
+            updatedAt={agent.updatedAt}
+            createdBy={agent.createdBy}
+            updatedBy={agent.updatedBy}
+          />
+        )}
       </div>
     </>
   )
@@ -313,10 +490,15 @@ function ClientDetail({ client }: { client: Client }) {
   const cDeals = deals.filter(d => d.clientId === client.id)
   const cContacts = contacts.filter(c => c.clientId === client.id)
 
+  const moreItems: Array<null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void; danger?: boolean }> = [
+    { label: 'Copy link', icon: Icons.Link,  action: () => navigator.clipboard.writeText(window.location.href) },
+    { label: 'Print',     icon: Icons.Print, action: () => window.print() },
+  ]
+
   return (
     <>
       <div className="drawer-head">
-        <button className="tb-icon-btn" onClick={closeDrawer}><Icons.X /></button>
+        <button className="close-btn" onClick={closeDrawer}><Icons.X /> Close</button>
         <div className="title" style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1 }}>
           <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--bg-sunk)', border: '1px solid var(--line)', display: 'grid', placeItems: 'center', color: 'var(--ink-3)' }}>
             <Icons.Building />
@@ -326,6 +508,7 @@ function ClientDetail({ client }: { client: Client }) {
             <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{client.id} · {client.sector}</div>
           </div>
         </div>
+        <DrawerMoreMenu items={moreItems} />
       </div>
       <div className="drawer-body">
         <div className="grid-3" style={{ marginBottom: 20 }}>
@@ -385,10 +568,15 @@ function FunderDetail({ funder }: { funder: Funder }) {
   const { closeDrawer } = useShell()
   const fDeals = deals.filter(d => d.funderId === funder.id)
 
+  const moreItems: Array<null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void; danger?: boolean }> = [
+    { label: 'Copy link', icon: Icons.Link,  action: () => navigator.clipboard.writeText(window.location.href) },
+    { label: 'Print',     icon: Icons.Print, action: () => window.print() },
+  ]
+
   return (
     <>
       <div className="drawer-head">
-        <button className="tb-icon-btn" onClick={closeDrawer}><Icons.X /></button>
+        <button className="close-btn" onClick={closeDrawer}><Icons.X /> Close</button>
         <div className="title" style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1 }}>
           <div style={{ width: 44, height: 44, borderRadius: 10, background: `oklch(0.95 0.04 ${funder.hue})`, color: `oklch(0.45 0.18 ${funder.hue})`, display: 'grid', placeItems: 'center' }}>
             <Icons.Bank />
@@ -398,6 +586,7 @@ function FunderDetail({ funder }: { funder: Funder }) {
             <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{funder.type} · {funder.id}</div>
           </div>
         </div>
+        <DrawerMoreMenu items={moreItems} />
       </div>
       <div className="drawer-body">
         <div className="grid-3" style={{ marginBottom: 20 }}>
@@ -431,6 +620,14 @@ function FunderDetail({ funder }: { funder: Funder }) {
             </table>
           </div>
         </div>
+        {funder.createdAt && (
+          <AuditFoot
+            createdAt={funder.createdAt}
+            updatedAt={funder.updatedAt}
+            createdBy={funder.createdBy}
+            updatedBy={funder.updatedBy}
+          />
+        )}
       </div>
     </>
   )
@@ -442,7 +639,7 @@ function NotificationsPanel() {
   return (
     <Drawer open={notifOpen} onClose={() => setNotifOpen(false)}>
       <div className="drawer-head">
-        <button className="tb-icon-btn" onClick={() => setNotifOpen(false)}><Icons.X /></button>
+        <button className="close-btn" onClick={() => setNotifOpen(false)}><Icons.X /> Close</button>
         <div className="title"><h2>Notifications</h2></div>
       </div>
       <div className="drawer-body" style={{ padding: 0 }}>
@@ -476,7 +673,7 @@ function NewDealWizard() {
             Step {step + 1} of {steps.length} — {steps[step]}
           </div>
         </div>
-        <button className="tb-icon-btn" onClick={() => { setNewDealOpen(false); setStep(0) }}><Icons.X /></button>
+        <button className="close-btn" onClick={() => { setNewDealOpen(false); setStep(0) }}><Icons.X /> Close</button>
       </div>
       <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 6 }}>
         {steps.map((s, i) => (

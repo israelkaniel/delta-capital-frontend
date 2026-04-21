@@ -1,9 +1,11 @@
 export type Agent = {
   id: string; name: string; email: string; tier: string;
   active: boolean; deals: number; mtd: number; hue: number;
+  createdAt?: string; updatedAt?: string; createdBy?: string; updatedBy?: string;
 }
 export type Funder = {
   id: string; name: string; type: string; ticket: string; avail: number; hue: number;
+  createdAt?: string; updatedAt?: string; createdBy?: string; updatedBy?: string;
 }
 export type Client = {
   id: string; company: string; sector: string; since: string;
@@ -12,11 +14,13 @@ export type Client = {
 export type Contact = {
   id: string; name: string; role: string; company: string;
   email: string; phone: string; clientId: string;
+  createdAt?: string; updatedAt?: string; createdBy?: string; updatedBy?: string;
 }
 export type Deal = {
   id: string; client: string; clientId: string; amount: number; rate: number;
   term: number; funder: string; funderId: string; status: string; stage: string;
   closed: string; maturity: string; agents: string[]; productType: string; industry: string;
+  createdAt: string; updatedAt: string; createdBy: string; updatedBy: string;
 }
 export type Split = { agentId: string; pct: number }
 export type Commission = {
@@ -73,18 +77,18 @@ export const contacts: Contact[] = [
 ]
 
 export const deals: Deal[] = [
-  { id: 'DL-2781', client: 'Aperture Robotics',     clientId: 'CL-1042', amount: 2400000, rate: 11.5, term: 36, funder: 'Meridian Structured Credit', funderId: 'FN-01', status: 'Active',   stage: 'Funded',        closed: '2026-03-18', maturity: '2029-03-18', agents: ['AG-01','AG-03'],      productType: 'Term Loan',   industry: 'Manufacturing' },
-  { id: 'DL-2782', client: 'Northwind Logistics',   clientId: 'CL-1043', amount: 850000,  rate: 13.2, term: 24, funder: 'Harbor Lane Partners',       funderId: 'FN-02', status: 'Active',   stage: 'Funded',        closed: '2026-02-27', maturity: '2028-02-27', agents: ['AG-02'],              productType: 'Revolving',   industry: 'Logistics' },
-  { id: 'DL-2783', client: 'Maple & Oak Catering',  clientId: 'CL-1044', amount: 180000,  rate: 14.8, term: 18, funder: 'Delta Capital Book',         funderId: 'FN-04', status: 'Active',   stage: 'Funded',        closed: '2026-04-02', maturity: '2027-10-02', agents: ['AG-05'],              productType: 'Working Cap', industry: 'Food & Bev' },
-  { id: 'DL-2784', client: 'Solaris Imaging',       clientId: 'CL-1045', amount: 4200000, rate: 10.25,term: 60, funder: 'North Ridge Credit',         funderId: 'FN-05', status: 'Active',   stage: 'Funded',        closed: '2026-01-15', maturity: '2031-01-15', agents: ['AG-01','AG-06'],      productType: 'Equipment',   industry: 'Healthcare' },
-  { id: 'DL-2785', client: 'Brightline Apparel',    clientId: 'CL-1046', amount: 320000,  rate: 15.1, term: 12, funder: 'Oakstone Family Office',     funderId: 'FN-03', status: 'Closing',  stage: 'Docs Signed',   closed: '2026-04-16', maturity: '2027-04-16', agents: ['AG-04'],              productType: 'Working Cap', industry: 'Retail' },
-  { id: 'DL-2786', client: 'Redwood Constr. Group', clientId: 'CL-1047', amount: 6800000, rate: 11.0, term: 48, funder: 'Meridian Structured Credit', funderId: 'FN-01', status: 'Closing',  stage: 'Underwriting',  closed: '2026-04-22', maturity: '2030-04-22', agents: ['AG-06','AG-02'],      productType: 'Term Loan',   industry: 'Construction' },
-  { id: 'DL-2787', client: 'Vantage Studios',       clientId: 'CL-1048', amount: 240000,  rate: 16.5, term: 12, funder: 'Prism Bridge Fund',          funderId: 'FN-06', status: 'Pending',  stage: 'Term Sheet',    closed: '—',          maturity: '—',          agents: ['AG-05'],              productType: 'Bridge',      industry: 'Media' },
-  { id: 'DL-2788', client: 'Kite Aviation Services',clientId: 'CL-1049', amount: 3100000, rate: 10.8, term: 48, funder: 'North Ridge Credit',         funderId: 'FN-05', status: 'Active',   stage: 'Funded',        closed: '2026-03-05', maturity: '2030-03-05', agents: ['AG-01','AG-04'],      productType: 'Equipment',   industry: 'Aerospace' },
-  { id: 'DL-2789', client: 'Aperture Robotics',     clientId: 'CL-1042', amount: 1000000, rate: 12.2, term: 24, funder: 'Harbor Lane Partners',       funderId: 'FN-02', status: 'Active',   stage: 'Funded',        closed: '2025-11-20', maturity: '2027-11-20', agents: ['AG-03'],              productType: 'Revolving',   industry: 'Manufacturing' },
-  { id: 'DL-2790', client: 'Solaris Imaging',       clientId: 'CL-1045', amount: 2000000, rate: 11.8, term: 36, funder: 'Delta Capital Book',         funderId: 'FN-04', status: 'Active',   stage: 'Funded',        closed: '2025-12-12', maturity: '2028-12-12', agents: ['AG-06'],              productType: 'Term Loan',   industry: 'Healthcare' },
-  { id: 'DL-2791', client: 'Redwood Constr. Group', clientId: 'CL-1047', amount: 1500000, rate: 12.6, term: 24, funder: 'Prism Bridge Fund',          funderId: 'FN-06', status: 'Pending',  stage: 'Application',   closed: '—',          maturity: '—',          agents: ['AG-02'],              productType: 'Bridge',      industry: 'Construction' },
-  { id: 'DL-2792', client: 'Northwind Logistics',   clientId: 'CL-1043', amount: 600000,  rate: 13.9, term: 18, funder: 'Oakstone Family Office',     funderId: 'FN-03', status: 'Declined', stage: 'Credit Review', closed: '—',          maturity: '—',          agents: ['AG-07'],              productType: 'Working Cap', industry: 'Logistics' },
+  { id: 'DL-2781', client: 'Aperture Robotics',     clientId: 'CL-1042', amount: 2400000, rate: 11.5, term: 36, funder: 'Meridian Structured Credit', funderId: 'FN-01', status: 'Active',   stage: 'Funded',        closed: '2026-03-18', maturity: '2029-03-18', agents: ['AG-01','AG-03'],      productType: 'Term Loan',   industry: 'Manufacturing', createdAt: '2026-02-10T09:14:00Z', updatedAt: '2026-04-18T14:32:00Z', createdBy: 'Noam Harel',    updatedBy: 'Noam Harel' },
+  { id: 'DL-2782', client: 'Northwind Logistics',   clientId: 'CL-1043', amount: 850000,  rate: 13.2, term: 24, funder: 'Harbor Lane Partners',       funderId: 'FN-02', status: 'Active',   stage: 'Funded',        closed: '2026-02-27', maturity: '2028-02-27', agents: ['AG-02'],              productType: 'Revolving',   industry: 'Logistics',      createdAt: '2026-01-15T11:22:00Z', updatedAt: '2026-04-10T08:55:00Z', createdBy: 'Rena Vasquez',  updatedBy: 'Rena Vasquez' },
+  { id: 'DL-2783', client: 'Maple & Oak Catering',  clientId: 'CL-1044', amount: 180000,  rate: 14.8, term: 18, funder: 'Delta Capital Book',         funderId: 'FN-04', status: 'Active',   stage: 'Funded',        closed: '2026-04-02', maturity: '2027-10-02', agents: ['AG-05'],              productType: 'Working Cap', industry: 'Food & Bev',     createdAt: '2026-03-20T13:05:00Z', updatedAt: '2026-04-15T10:10:00Z', createdBy: 'Omer Bashir',   updatedBy: 'Noam Harel' },
+  { id: 'DL-2784', client: 'Solaris Imaging',       clientId: 'CL-1045', amount: 4200000, rate: 10.25,term: 60, funder: 'North Ridge Credit',         funderId: 'FN-05', status: 'Active',   stage: 'Funded',        closed: '2026-01-15', maturity: '2031-01-15', agents: ['AG-01','AG-06'],      productType: 'Equipment',   industry: 'Healthcare',     createdAt: '2025-12-01T08:30:00Z', updatedAt: '2026-04-20T16:45:00Z', createdBy: 'Noam Harel',    updatedBy: 'Tali Rosen' },
+  { id: 'DL-2785', client: 'Brightline Apparel',    clientId: 'CL-1046', amount: 320000,  rate: 15.1, term: 12, funder: 'Oakstone Family Office',     funderId: 'FN-03', status: 'Closing',  stage: 'Docs Signed',   closed: '2026-04-16', maturity: '2027-04-16', agents: ['AG-04'],              productType: 'Working Cap', industry: 'Retail',         createdAt: '2026-03-28T14:00:00Z', updatedAt: '2026-04-16T09:20:00Z', createdBy: 'Daniela Croft', updatedBy: 'Daniela Croft' },
+  { id: 'DL-2786', client: 'Redwood Constr. Group', clientId: 'CL-1047', amount: 6800000, rate: 11.0, term: 48, funder: 'Meridian Structured Credit', funderId: 'FN-01', status: 'Closing',  stage: 'Underwriting',  closed: '2026-04-22', maturity: '2030-04-22', agents: ['AG-06','AG-02'],      productType: 'Term Loan',   industry: 'Construction',   createdAt: '2026-02-18T10:15:00Z', updatedAt: '2026-04-21T11:05:00Z', createdBy: 'Tali Rosen',    updatedBy: 'Rena Vasquez' },
+  { id: 'DL-2787', client: 'Vantage Studios',       clientId: 'CL-1048', amount: 240000,  rate: 16.5, term: 12, funder: 'Prism Bridge Fund',          funderId: 'FN-06', status: 'Pending',  stage: 'Term Sheet',    closed: '—',          maturity: '—',          agents: ['AG-05'],              productType: 'Bridge',      industry: 'Media',          createdAt: '2026-04-05T15:30:00Z', updatedAt: '2026-04-19T12:00:00Z', createdBy: 'Omer Bashir',   updatedBy: 'Omer Bashir' },
+  { id: 'DL-2788', client: 'Kite Aviation Services',clientId: 'CL-1049', amount: 3100000, rate: 10.8, term: 48, funder: 'North Ridge Credit',         funderId: 'FN-05', status: 'Active',   stage: 'Funded',        closed: '2026-03-05', maturity: '2030-03-05', agents: ['AG-01','AG-04'],      productType: 'Equipment',   industry: 'Aerospace',      createdAt: '2026-01-20T09:00:00Z', updatedAt: '2026-04-17T13:30:00Z', createdBy: 'Noam Harel',    updatedBy: 'Daniela Croft' },
+  { id: 'DL-2789', client: 'Aperture Robotics',     clientId: 'CL-1042', amount: 1000000, rate: 12.2, term: 24, funder: 'Harbor Lane Partners',       funderId: 'FN-02', status: 'Active',   stage: 'Funded',        closed: '2025-11-20', maturity: '2027-11-20', agents: ['AG-03'],              productType: 'Revolving',   industry: 'Manufacturing',  createdAt: '2025-10-12T11:00:00Z', updatedAt: '2026-03-14T08:20:00Z', createdBy: 'Ari Segal',     updatedBy: 'Ari Segal' },
+  { id: 'DL-2790', client: 'Solaris Imaging',       clientId: 'CL-1045', amount: 2000000, rate: 11.8, term: 36, funder: 'Delta Capital Book',         funderId: 'FN-04', status: 'Active',   stage: 'Funded',        closed: '2025-12-12', maturity: '2028-12-12', agents: ['AG-06'],              productType: 'Term Loan',   industry: 'Healthcare',     createdAt: '2025-11-01T14:45:00Z', updatedAt: '2026-04-08T09:15:00Z', createdBy: 'Tali Rosen',    updatedBy: 'Tali Rosen' },
+  { id: 'DL-2791', client: 'Redwood Constr. Group', clientId: 'CL-1047', amount: 1500000, rate: 12.6, term: 24, funder: 'Prism Bridge Fund',          funderId: 'FN-06', status: 'Pending',  stage: 'Application',   closed: '—',          maturity: '—',          agents: ['AG-02'],              productType: 'Bridge',      industry: 'Construction',   createdAt: '2026-04-10T10:30:00Z', updatedAt: '2026-04-20T14:00:00Z', createdBy: 'Rena Vasquez',  updatedBy: 'Noam Harel' },
+  { id: 'DL-2792', client: 'Northwind Logistics',   clientId: 'CL-1043', amount: 600000,  rate: 13.9, term: 18, funder: 'Oakstone Family Office',     funderId: 'FN-03', status: 'Declined', stage: 'Credit Review', closed: '—',          maturity: '—',          agents: ['AG-07'],              productType: 'Working Cap', industry: 'Logistics',      createdAt: '2026-03-05T09:00:00Z', updatedAt: '2026-04-01T11:30:00Z', createdBy: 'Yoni Mekel',    updatedBy: 'Noam Harel' },
 ]
 
 export const commissions: Commission[] = [
@@ -124,6 +128,100 @@ export const tasks: Task[] = [
   { id: 'T4', title: 'Update commission rules v13',     due: 'Apr 25', owner: 'AG-06', priority: 'Low'  },
   { id: 'T5', title: 'Monthly summary — March close',   due: 'Apr 30', owner: 'AG-01', priority: 'Med'  },
 ]
+
+export type LedgerEntryType =
+  | 'earned'
+  | 'reserve'
+  | 'partial_reserve'
+  | 'released'
+  | 'reversed'
+  | 'payment'
+  | 'payment_correction'
+  | 'adjustment'
+
+export type LedgerEntry = {
+  id: string
+  agentId: string
+  type: LedgerEntryType
+  amount: number
+  date: string
+  dealId?: string
+  commissionId?: string
+  ref?: string
+  notes?: string
+  createdBy: string
+}
+
+export const ledgerEntries: LedgerEntry[] = [
+  // AG-01 Noam Harel
+  { id: 'LE-001', agentId: 'AG-01', type: 'earned',             amount:  40425, date: '2026-01-20', dealId: 'DL-2784', commissionId: 'CM-10024', notes: '55% share of $73,500',                           createdBy: 'System' },
+  { id: 'LE-002', agentId: 'AG-01', type: 'payment',            amount:  40425, date: '2026-02-05', dealId: 'DL-2784', commissionId: 'CM-10024', ref: 'PAY-2402-001',                                     createdBy: 'Tali Rosen' },
+  { id: 'LE-003', agentId: 'AG-01', type: 'earned',             amount:  32400, date: '2026-03-19', dealId: 'DL-2781', commissionId: 'CM-10021', notes: '60% share of $54,000',                           createdBy: 'System' },
+  { id: 'LE-004', agentId: 'AG-01', type: 'payment',            amount:  32400, date: '2026-04-05', dealId: 'DL-2781', commissionId: 'CM-10021', ref: 'PAY-2404-001',                                     createdBy: 'Tali Rosen' },
+  { id: 'LE-005', agentId: 'AG-01', type: 'earned',             amount:  28675, date: '2026-03-10', dealId: 'DL-2788', commissionId: 'CM-10027', notes: '50% share of $57,350',                           createdBy: 'System' },
+  { id: 'LE-006', agentId: 'AG-01', type: 'partial_reserve',    amount:  14338, date: '2026-04-15', dealId: 'DL-2788', commissionId: 'CM-10027', notes: '50% withheld — pending borrower doc verification', createdBy: 'Tali Rosen' },
+
+  // AG-02 Rena Vasquez
+  { id: 'LE-010', agentId: 'AG-02', type: 'earned',             amount:  17000, date: '2026-03-01', dealId: 'DL-2782', commissionId: 'CM-10022',                                                          createdBy: 'System' },
+  { id: 'LE-011', agentId: 'AG-02', type: 'earned',             amount:  47600, date: '2026-04-10', dealId: 'DL-2786', commissionId: 'CM-10026', notes: '35% share of $136,000',                          createdBy: 'System' },
+  { id: 'LE-012', agentId: 'AG-02', type: 'adjustment',         amount:    500, date: '2026-04-18',                                               notes: 'Q1 performance incentive',                      createdBy: 'Admin' },
+
+  // AG-03 Ari Segal
+  { id: 'LE-020', agentId: 'AG-03', type: 'earned',             amount:  22500, date: '2025-11-21', dealId: 'DL-2789', commissionId: 'CM-10028',                                                          createdBy: 'System' },
+  { id: 'LE-021', agentId: 'AG-03', type: 'payment',            amount:  22500, date: '2025-12-06', dealId: 'DL-2789', commissionId: 'CM-10028', ref: 'PAY-2512-003',                                     createdBy: 'Tali Rosen' },
+  { id: 'LE-022', agentId: 'AG-03', type: 'earned',             amount:  21600, date: '2026-03-19', dealId: 'DL-2781', commissionId: 'CM-10021', notes: '40% share of $54,000',                           createdBy: 'System' },
+  { id: 'LE-023', agentId: 'AG-03', type: 'reserve',            amount:  21600, date: '2026-04-08', dealId: 'DL-2781', commissionId: 'CM-10021', notes: 'Hold — awaiting funder commission confirmation',  createdBy: 'Tali Rosen' },
+  { id: 'LE-024', agentId: 'AG-03', type: 'released',           amount:  21600, date: '2026-04-19', dealId: 'DL-2781', commissionId: 'CM-10021', notes: 'Funder confirmed — reserve released in full',     createdBy: 'Tali Rosen' },
+
+  // AG-04 Daniela Croft
+  { id: 'LE-030', agentId: 'AG-04', type: 'earned',             amount:  28675, date: '2026-03-05', dealId: 'DL-2788', commissionId: 'CM-10027', notes: '50% share of $57,350',                           createdBy: 'System' },
+  { id: 'LE-031', agentId: 'AG-04', type: 'earned',             amount:   8000, date: '2026-04-16', dealId: 'DL-2785', commissionId: 'CM-10025',                                                          createdBy: 'System' },
+  { id: 'LE-032', agentId: 'AG-04', type: 'payment_correction', amount:  -1200, date: '2026-04-17',                                               notes: 'Fee deduction per contract clause 4.2',         createdBy: 'Admin' },
+
+  // AG-05 Omer Bashir
+  { id: 'LE-040', agentId: 'AG-05', type: 'earned',             amount:   6300, date: '2026-04-03', dealId: 'DL-2783', commissionId: 'CM-10023',                                                          createdBy: 'System' },
+
+  // AG-06 Tali Rosen
+  { id: 'LE-050', agentId: 'AG-06', type: 'earned',             amount:  60000, date: '2025-12-13', dealId: 'DL-2790', commissionId: 'CM-10029', notes: 'In-house origination — borrower-paid',           createdBy: 'System' },
+  { id: 'LE-051', agentId: 'AG-06', type: 'payment',            amount:  60000, date: '2026-01-10', dealId: 'DL-2790', commissionId: 'CM-10029', ref: 'PAY-2601-001',                                     createdBy: 'Admin' },
+  { id: 'LE-052', agentId: 'AG-06', type: 'earned',             amount:  33075, date: '2026-02-10', dealId: 'DL-2784', commissionId: 'CM-10024', notes: '45% share of $73,500',                           createdBy: 'System' },
+  { id: 'LE-053', agentId: 'AG-06', type: 'payment',            amount:  33075, date: '2026-03-02', dealId: 'DL-2784', commissionId: 'CM-10024', ref: 'PAY-2603-001',                                     createdBy: 'Admin' },
+  { id: 'LE-054', agentId: 'AG-06', type: 'earned',             amount:  88400, date: '2026-04-10', dealId: 'DL-2786', commissionId: 'CM-10026', notes: '65% share of $136,000',                          createdBy: 'System' },
+  { id: 'LE-055', agentId: 'AG-06', type: 'reserve',            amount:  88400, date: '2026-04-12', dealId: 'DL-2786', commissionId: 'CM-10026', notes: 'Full reserve — awaiting funder confirmation',     createdBy: 'Admin' },
+
+  // AG-07 Yoni Mekel (inactive — reversed)
+  { id: 'LE-060', agentId: 'AG-07', type: 'earned',             amount:  12400, date: '2026-03-10', dealId: 'DL-2792',                            notes: '100% share',                                    createdBy: 'System' },
+  { id: 'LE-061', agentId: 'AG-07', type: 'reserve',            amount:  12400, date: '2026-03-12', dealId: 'DL-2792',                            notes: 'Hold — deal under credit review',               createdBy: 'Admin' },
+  { id: 'LE-062', agentId: 'AG-07', type: 'reversed',           amount:  12400, date: '2026-04-01', dealId: 'DL-2792',                            notes: 'Deal declined — commission reversed to business', createdBy: 'Admin' },
+]
+
+export function ledgerBalances(agentId: string) {
+  const entries = ledgerEntries.filter(e => e.agentId === agentId)
+  let totalEarned = 0, inReserve = 0, totalReversed = 0, totalPaid = 0
+  for (const e of entries) {
+    if (e.type === 'earned')                          totalEarned   += e.amount
+    if (e.type === 'reserve' || e.type === 'partial_reserve') inReserve += e.amount
+    if (e.type === 'released')                        inReserve     -= e.amount
+    if (e.type === 'reversed')                        { inReserve -= e.amount; totalReversed += e.amount }
+    if (e.type === 'payment')                         totalPaid     += e.amount
+  }
+  const available = totalEarned - inReserve - totalReversed - totalPaid
+  return { totalEarned, inReserve, totalReversed, totalPaid, available }
+}
+
+export function ledgerAvailableImpact(e: LedgerEntry): number {
+  switch (e.type) {
+    case 'earned':             return +e.amount
+    case 'reserve':            return -e.amount
+    case 'partial_reserve':    return -e.amount
+    case 'released':           return +e.amount
+    case 'reversed':           return 0
+    case 'payment':            return -e.amount
+    case 'payment_correction': return  e.amount
+    case 'adjustment':         return  e.amount
+    default:                   return 0
+  }
+}
 
 export const agentById = (id: string) => agents.find(a => a.id === id)
 export const dealById  = (id: string) => deals.find(d => d.id === id)
