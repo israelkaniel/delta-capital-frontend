@@ -8,7 +8,7 @@ import { Avatar, AvatarStack } from '@/components/ui/avatar'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { AreaChart } from '@/components/ui/charts'
 import { fmt } from '@/lib/fmt'
-import { agentById, dealById, funderById, deals, commissions, contacts, monthly, notifications, tasks } from '@/lib/data'
+import { agentById, dealById, funderById, deals, commissions, contacts, monthly, notifications, tasks, agents, clients, funders } from '@/lib/data'
 import type { Deal, Commission, Agent, Client, Funder } from '@/lib/data'
 
 // ─── Shared: Record Actions Dropdown ──────────────────────────────────────────
@@ -660,82 +660,364 @@ function NotificationsPanel() {
 }
 
 // ─── New Deal Wizard ───────────────────────────────────────────────────────────
+const PRODUCT_TYPES = ['Term Loan', 'Revolving', 'Working Cap', 'Equipment', 'Bridge', 'Other']
+const INDUSTRIES    = ['Aerospace', 'Construction', 'Food & Bev', 'Healthcare', 'Logistics', 'Manufacturing', 'Media', 'Retail', 'Technology', 'Other']
+
+const ORG_RULES = [
+  { id: 'R-01', name: 'Standard Funder Fee',      condition: 'All deals',             rateLabel: '2.00%', rate: 2.00 },
+  { id: 'R-02', name: 'Meridian Tiered Bonus',    condition: 'Meridian · deal > $2M', rateLabel: '+0.25%', rate: 0.25 },
+  { id: 'R-05', name: 'Borrower Origination Fee', condition: 'In-house funded deals',  rateLabel: '3.00%', rate: 3.00 },
+  { id: 'R-06', name: 'Bridge Deal Uplift',       condition: 'Product: Bridge',        rateLabel: '+0.50%', rate: 0.50 },
+]
+
+const FUNDER_RULES: Record<string, { name: string; rate: number; rateLabel: string; note: string }> = {
+  'FN-01': { name: 'Meridian Premium Rate', rate: 2.25, rateLabel: '2.25%', note: 'Includes tiered bonus for deals >$2M' },
+  'FN-02': { name: 'Harbor Lane Standard',  rate: 2.00, rateLabel: '2.00%', note: 'Standard rate, no bonuses' },
+  'FN-05': { name: 'North Ridge Large Cap', rate: 1.75, rateLabel: '1.75%', note: 'Discounted rate for institutional deals >$5M' },
+}
+
+function SearchCombo<T extends { id: string }>({
+  items, getLabel, getSub, placeholder, selected, onSelect,
+}: {
+  items: T[]; getLabel: (i: T) => string; getSub?: (i: T) => string
+  placeholder: string; selected: T | null; onSelect: (i: T | null) => void
+}) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const filtered = items.filter(i => getLabel(i).toLowerCase().includes(q.toLowerCase()))
+
+  if (selected) return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: '1.5px solid var(--accent)', borderRadius: 'var(--r-sm)', background: 'var(--accent-soft)' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-1)' }}>{getLabel(selected)}</div>
+        {getSub && <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{getSub(selected)}</div>}
+      </div>
+      <button className="btn sm ghost" style={{ padding: '2px 6px' }} onClick={() => onSelect(null)}><Icons.X /></button>
+    </div>
+  )
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        className="input"
+        placeholder={placeholder}
+        value={q}
+        onChange={e => { setQ(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+      />
+      {open && filtered.length > 0 && (
+        <div className="search-drop">
+          {filtered.map(item => (
+            <div key={item.id} className="search-drop-item" onMouseDown={() => { onSelect(item); setQ(''); setOpen(false) }}>
+              <div style={{ fontWeight: 500, fontSize: 13 }}>{getLabel(item)}</div>
+              {getSub && <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{getSub(item)}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type DealDraft = {
+  client: Client | null; productType: string; amount: string; rate: string
+  term: string; industry: string; funder: Funder | null; fundingDate: string
+  notes: string; commissionRuleId: string; splits: { agent: Agent; pct: string }[]
+}
+
+const EMPTY_DRAFT: DealDraft = {
+  client: null, productType: '', amount: '', rate: '', term: '', industry: '',
+  funder: null, fundingDate: '', notes: '', commissionRuleId: 'R-01', splits: [],
+}
+
 function NewDealWizard() {
   const { newDealOpen, setNewDealOpen } = useShell()
   const [step, setStep] = useState(0)
-  const steps = ['Client & product', 'Funding', 'Agents & split', 'Review']
+  const [draft, setDraft] = useState<DealDraft>(EMPTY_DRAFT)
+  const [agentQ, setAgentQ] = useState('')
+  const [agentOpen, setAgentOpen] = useState(false)
+
+  const steps = ['Client & Product', 'Funder & Terms', 'Agents & Split', 'Review']
+
+  const close = () => { setNewDealOpen(false); setStep(0); setDraft(EMPTY_DRAFT); setAgentQ('') }
+
+  const funderRule = draft.funder ? FUNDER_RULES[draft.funder.id] ?? null : null
+  const orgRule    = ORG_RULES.find(r => r.id === draft.commissionRuleId) ?? ORG_RULES[0]
+  const commPct    = funderRule ? funderRule.rate : orgRule.rate
+  const loanAmt    = parseFloat(draft.amount.replace(/,/g, '')) || 0
+  const commAmt    = loanAmt * commPct / 100
+  const splitTotal = draft.splits.reduce((acc, s) => acc + (parseFloat(s.pct) || 0), 0)
+  const splitOk    = draft.splits.length > 0 && Math.abs(splitTotal - 100) < 0.01
+
+  const availAgents = agents.filter(a => a.active && !draft.splits.find(s => s.agent.id === a.id) && a.name.toLowerCase().includes(agentQ.toLowerCase()))
+
+  const addAgent = (a: Agent) => {
+    const rem = Math.max(0, 100 - splitTotal)
+    setDraft(d => ({ ...d, splits: [...d.splits, { agent: a, pct: String(rem) }] }))
+    setAgentQ(''); setAgentOpen(false)
+  }
 
   return (
-    <Modal open={newDealOpen} onClose={() => { setNewDealOpen(false); setStep(0) }}>
+    <Modal open={newDealOpen} onClose={close}>
       <div className="modal-head">
         <div style={{ flex: 1 }}>
           <h2>New Deal</h2>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>
-            Step {step + 1} of {steps.length} — {steps[step]}
-          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>Step {step + 1} of {steps.length} — {steps[step]}</div>
         </div>
-        <button className="close-btn" onClick={() => { setNewDealOpen(false); setStep(0) }}><Icons.X /> Close</button>
+        <button className="close-btn" onClick={close}><Icons.X /> Close</button>
       </div>
-      <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 6 }}>
+
+      {/* Progress bar */}
+      <div style={{ padding: '14px 22px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 6 }}>
         {steps.map((s, i) => (
           <div key={i} style={{ flex: 1 }}>
             <div style={{ height: 3, borderRadius: 2, background: i <= step ? 'var(--accent)' : 'var(--line)', marginBottom: 4 }} />
-            <div style={{ fontSize: 10.5, color: i === step ? 'var(--ink)' : 'var(--ink-4)', fontWeight: i === step ? 500 : 400 }}>{s}</div>
+            <div style={{ fontSize: 10.5, color: i === step ? 'var(--ink-1)' : i < step ? 'var(--ink-3)' : 'var(--ink-4)', fontWeight: i === step ? 600 : 400 }}>{s}</div>
           </div>
         ))}
       </div>
+
       <div className="modal-body">
+
+        {/* ── Step 1: Client & Product ── */}
         {step === 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {[['Client','Select client…'],['Product type','Select…'],['Loan amount','$0'],['Interest rate','%'],['Term (months)','24'],['Industry','Select…']].map(([l, ph]) => (
-              <div key={l} className="field">
-                <label>{l}</label>
-                <input className="input" placeholder={ph} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="field">
+              <label>Client <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <SearchCombo
+                items={clients}
+                getLabel={c => c.company}
+                getSub={c => `${c.id} · ${c.sector} · Rating: ${c.rating}`}
+                placeholder="Search existing clients…"
+                selected={draft.client}
+                onSelect={c => setDraft(d => ({ ...d, client: c, industry: c ? c.sector : d.industry }))}
+              />
+              <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 4 }}>
+                Can&apos;t find the client?{' '}
+                <span style={{ color: 'var(--accent-ink)', cursor: 'pointer', fontWeight: 500 }}>Create new client</span>
               </div>
-            ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="field">
+                <label>Product type <span style={{ color: 'var(--neg)' }}>*</span></label>
+                <select className="input" value={draft.productType} onChange={e => setDraft(d => ({ ...d, productType: e.target.value }))}>
+                  <option value="">Select…</option>
+                  {PRODUCT_TYPES.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>Industry</label>
+                <select className="input" value={draft.industry} onChange={e => setDraft(d => ({ ...d, industry: e.target.value }))}>
+                  <option value="">Select…</option>
+                  {INDUSTRIES.map(i => <option key={i}>{i}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>Loan amount <span style={{ color: 'var(--neg)' }}>*</span></label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', fontSize: 13, pointerEvents: 'none' }}>$</span>
+                  <input className="input" style={{ paddingLeft: 22 }} placeholder="0" value={draft.amount} onChange={e => setDraft(d => ({ ...d, amount: e.target.value }))} />
+                </div>
+              </div>
+              <div className="field">
+                <label>Interest rate</label>
+                <div style={{ position: 'relative' }}>
+                  <input className="input" style={{ paddingRight: 28 }} placeholder="0.00" value={draft.rate} onChange={e => setDraft(d => ({ ...d, rate: e.target.value }))} />
+                  <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', fontSize: 13, pointerEvents: 'none' }}>%</span>
+                </div>
+              </div>
+              <div className="field">
+                <label>Term (months)</label>
+                <input className="input" placeholder="24" value={draft.term} onChange={e => setDraft(d => ({ ...d, term: e.target.value }))} />
+              </div>
+            </div>
           </div>
         )}
+
+        {/* ── Step 2: Funder & Terms ── */}
         {step === 1 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {[['Funder','Select funder…'],['Funding date',''],['Notes','']].map(([l, ph]) => (
-              <div key={l} className="field" style={l === 'Notes' ? { gridColumn: '1/-1' } : {}}>
-                <label>{l}</label>
-                <input className="input" placeholder={ph} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="field">
+              <label>Funder <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <SearchCombo
+                items={funders}
+                getLabel={f => f.name}
+                getSub={f => `${f.type} · Ticket: ${f.ticket} · Available: ${fmt.moneyK(f.avail)}`}
+                placeholder="Search funders…"
+                selected={draft.funder}
+                onSelect={f => setDraft(d => ({ ...d, funder: f, commissionRuleId: 'R-01' }))}
+              />
+            </div>
+
+            {draft.funder && (
+              <div style={{ padding: 14, border: '1px solid var(--line)', borderRadius: 9, background: 'var(--bg-sunk)' }}>
+                <div style={{ fontSize: 11, color: 'var(--ink-4)', fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: 10 }}>Commission rules</div>
+                {funderRule ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{funderRule.name}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>{funderRule.note}</div>
+                    </div>
+                    <div className="num" style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent-ink)' }}>{funderRule.rateLabel}</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 10 }}>No funder-specific rule — select an org rule to apply:</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {ORG_RULES.map(r => (
+                        <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: `1.5px solid ${draft.commissionRuleId === r.id ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 8, cursor: 'pointer', background: draft.commissionRuleId === r.id ? 'var(--accent-soft)' : 'var(--bg-elev)' }}>
+                          <input type="radio" name="commrule" value={r.id} checked={draft.commissionRuleId === r.id} onChange={() => setDraft(d => ({ ...d, commissionRuleId: r.id }))} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500 }}>{r.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{r.condition}</div>
+                          </div>
+                          <span className="num" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-ink)' }}>{r.rateLabel}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="field">
+                <label>Funding date</label>
+                <input type="date" className="input" value={draft.fundingDate} onChange={e => setDraft(d => ({ ...d, fundingDate: e.target.value }))} />
+              </div>
+            </div>
+            <div className="field">
+              <label>Notes</label>
+              <textarea className="input" rows={3} style={{ resize: 'vertical' }} placeholder="Internal notes about this deal…" value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} />
+            </div>
           </div>
         )}
+
+        {/* ── Step 3: Agents & Split ── */}
         {step === 2 && (
-          <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>
-            <div style={{ marginBottom: 12, fontWeight: 500, color: 'var(--ink)' }}>Assign agents and set commission split</div>
-            <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
-              {['Agent 1 — 60%','Agent 2 — 40%'].map((a, i) => (
-                <div key={i} style={{ padding: 12, border: '1px solid var(--line)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Avatar name={a.split('—')[0].trim()} size="md" />
-                  <span style={{ flex: 1 }}>{a}</span>
-                  <button className="btn sm ghost"><Icons.X /></button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>Assign agents and set commission split</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: splitOk ? 'var(--pos)' : splitTotal > 100 ? 'var(--neg)' : 'var(--ink-4)' }}>
+                {splitTotal.toFixed(0)}% / 100%
+              </div>
+            </div>
+
+            {draft.splits.map(s => (
+              <div key={s.agent.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 9, background: 'var(--bg-elev)' }}>
+                <Avatar name={s.agent.name} hue={s.agent.hue} size="md" />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{s.agent.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{s.agent.tier} · {s.agent.id}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <input className="input" style={{ width: 60, textAlign: 'right', padding: '4px 8px' }} value={s.pct} onChange={e => setDraft(d => ({ ...d, splits: d.splits.map(x => x.agent.id === s.agent.id ? { ...x, pct: e.target.value } : x) }))} />
+                  <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>%</span>
+                </div>
+                {commAmt > 0 && (
+                  <div className="num" style={{ fontSize: 11.5, color: 'var(--ink-3)', minWidth: 56 }}>≈ {fmt.moneyK(commAmt * (parseFloat(s.pct) || 0) / 100)}</div>
+                )}
+                <button className="btn sm ghost" style={{ padding: '3px 6px' }} onClick={() => setDraft(d => ({ ...d, splits: d.splits.filter(x => x.agent.id !== s.agent.id) }))}><Icons.X /></button>
+              </div>
+            ))}
+
+            <div style={{ position: 'relative' }}>
+              <input
+                className="input"
+                placeholder="Search and add agent…"
+                value={agentQ}
+                onChange={e => { setAgentQ(e.target.value); setAgentOpen(true) }}
+                onFocus={() => setAgentOpen(true)}
+                onBlur={() => setTimeout(() => setAgentOpen(false), 200)}
+              />
+              {agentOpen && availAgents.length > 0 && (
+                <div className="search-drop">
+                  {availAgents.map(a => (
+                    <div key={a.id} className="search-drop-item" onMouseDown={() => addAgent(a)}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Avatar name={a.name} hue={a.hue} size="sm" />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{a.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{a.tier} · {a.id}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {draft.splits.length > 0 && !splitOk && (
+              <div style={{ fontSize: 12, padding: '8px 12px', borderRadius: 8, color: splitTotal > 100 ? 'var(--neg)' : 'var(--warn)', background: splitTotal > 100 ? 'color-mix(in oklch, var(--neg) 10%, transparent)' : 'color-mix(in oklch, var(--warn) 10%, transparent)', border: `1px solid ${splitTotal > 100 ? 'color-mix(in oklch, var(--neg) 30%, transparent)' : 'color-mix(in oklch, var(--warn) 30%, transparent)'}` }}>
+                {splitTotal > 100 ? `Over by ${(splitTotal - 100).toFixed(0)}% — reduce split percentages` : `${(100 - splitTotal).toFixed(0)}% unallocated — splits must total 100%`}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 4: Review ── */}
+        {step === 3 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ padding: 14, background: 'var(--accent-soft)', border: '1px solid color-mix(in oklch, var(--accent) 30%, transparent)', borderRadius: 9 }}>
+              <div style={{ fontSize: 12, color: 'var(--accent-ink)', fontWeight: 600, marginBottom: 2 }}>Ready to submit</div>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>Review all details before creating this deal record.</div>
+            </div>
+
+            <div style={{ border: '1px solid var(--line)', borderRadius: 9, overflow: 'hidden' }}>
+              {([
+                ['Client',       draft.client?.company ?? '—'],
+                ['Product type', draft.productType || '—'],
+                ['Industry',     draft.industry || '—'],
+                ['Loan amount',  loanAmt ? `$${loanAmt.toLocaleString()}` : '—'],
+                ['Interest rate',draft.rate ? `${draft.rate}%` : '—'],
+                ['Term',         draft.term ? `${draft.term} months` : '—'],
+                ['Funder',       draft.funder?.name ?? '—'],
+                ['Funding date', draft.fundingDate || '—'],
+              ] as [string,string][]).map(([l, v], i, arr) => (
+                <div key={l} style={{ display: 'grid', gridTemplateColumns: '130px 1fr', borderBottom: i < arr.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 500, padding: '9px 0 9px 14px', background: 'var(--bg-sunk)' }}>{l}</div>
+                  <div style={{ fontSize: 13, padding: '9px 14px', fontWeight: 500 }}>{v}</div>
                 </div>
               ))}
-              <button className="btn sm"><Icons.Plus /> Add agent</button>
             </div>
-          </div>
-        )}
-        {step === 3 && (
-          <div style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6 }}>
-            <div style={{ padding: 16, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', borderRadius: 8, marginBottom: 16 }}>
-              <div style={{ color: 'var(--accent-ink)', fontWeight: 500 }}>Ready to submit</div>
-              <div style={{ fontSize: 11.5, marginTop: 4 }}>Review the details above before creating the deal record.</div>
-            </div>
-            <div>All required fields are complete. Click <strong>Create deal</strong> to submit.</div>
+
+            {commAmt > 0 && (
+              <div style={{ padding: 14, border: '1px solid var(--line)', borderRadius: 9, background: 'var(--bg-elev)' }}>
+                <div style={{ fontSize: 11, color: 'var(--ink-4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Commission preview</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: draft.splits.length ? 10 : 0 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{funderRule ? funderRule.name : orgRule.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>{funderRule ? funderRule.rateLabel : orgRule.rateLabel} × ${loanAmt.toLocaleString()}</div>
+                  </div>
+                  <div className="num" style={{ fontSize: 22, fontWeight: 700, color: 'var(--pos)' }}>{fmt.moneyK(commAmt)}</div>
+                </div>
+                {draft.splits.map((s, i) => (
+                  <div key={s.agent.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderTop: '1px solid var(--line)' }}>
+                    <Avatar name={s.agent.name} hue={s.agent.hue} size="sm" />
+                    <span style={{ flex: 1, fontSize: 12.5 }}>{s.agent.name}</span>
+                    <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>{s.pct}%</span>
+                    <span className="num" style={{ fontSize: 13, fontWeight: 600 }}>{fmt.moneyK(commAmt * (parseFloat(s.pct) || 0) / 100)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {draft.notes && (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', padding: '10px 14px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--bg-sunk)' }}>
+                <span style={{ fontWeight: 600, color: 'var(--ink-3)' }}>Notes · </span>{draft.notes}
+              </div>
+            )}
           </div>
         )}
       </div>
+
       <div className="modal-foot">
-        {step > 0 && <button className="btn" onClick={() => setStep(s => s - 1)}>Back</button>}
+        {step > 0 && <button className="btn" onClick={() => setStep(s => s - 1)}>← Back</button>}
         <div style={{ flex: 1 }} />
         {step < steps.length - 1
-          ? <button className="btn primary" onClick={() => setStep(s => s + 1)}>Continue</button>
-          : <button className="btn primary" onClick={() => { setNewDealOpen(false); setStep(0) }}>Create deal</button>
+          ? <button className="btn primary" onClick={() => setStep(s => s + 1)}>Continue →</button>
+          : <button className="btn primary" onClick={close}>Create deal</button>
         }
       </div>
     </Modal>
