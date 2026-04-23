@@ -1,46 +1,59 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { agents, commissions, deals } from '@/lib/data'
+import { api, type DbAgent, type DbAgentPerformance } from '@/lib/api'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
 
-const tierOrder = { Partner: 0, Senior: 1, Mid: 2, Junior: 3 }
-
 export default function AgentsPage() {
   const router = useRouter()
+  const [agents, setAgents] = useState<DbAgent[]>([])
+  const [perf, setPerf]     = useState<DbAgentPerformance[]>([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [tier, setTier] = useState('')
-  const [view, setView] = useState<'grid' | 'table'>('grid')
+  const [view, setView]     = useState<'grid' | 'table'>('grid')
 
-  const tiers = Array.from(new Set(agents.map(a => a.tier))).sort((a, b) => (tierOrder as any)[a] - (tierOrder as any)[b])
+  useEffect(() => {
+    Promise.all([api.agents.list(), api.reports.agents()]).then(([agentsRes, perfRes]) => {
+      setAgents(agentsRes.data ?? [])
+      setPerf(perfRes.data?.agents ?? [])
+      setLoading(false)
+    })
+  }, [])
 
-  const agentStats = useMemo(() => agents.map(a => {
-    const total = commissions.reduce((acc, c) => {
-      const split = c.splits.find(s => s.agentId === a.id)
-      return acc + (split ? c.value * (split.pct / 100) : 0)
-    }, 0)
-    const dealCount = deals.filter(d => d.agents.includes(a.id)).length
-    return { ...a, total, dealCount }
-  }).sort((a, b) => (tierOrder as any)[a.tier] - (tierOrder as any)[b.tier]), [])
+  const agentStats = useMemo(() =>
+    agents.map(a => {
+      const p = perf.find(x => x.agent_id === a.id)
+      return {
+        ...a,
+        name:         a.profiles?.name ?? a.code ?? '—',
+        email:        a.profiles?.email ?? '—',
+        total:        p?.total_commissions ?? 0,
+        dealCount:    p?.total_deals ?? 0,
+        activeDeals:  p?.active_deals ?? 0,
+        totalVolume:  p?.total_volume ?? 0,
+      }
+    }),
+    [agents, perf],
+  )
 
-  const filtered = useMemo(() => agentStats.filter(a => {
-    if (tier && a.tier !== tier) return false
-    const q = search.toLowerCase()
-    return !q || a.name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q)
-  }), [search, tier, agentStats])
-
-  const tierTone = (t: string) => t === 'Partner' ? 'accent' : t === 'Senior' ? 'pos' : t === 'Mid' ? 'info' : 'default'
+  const filtered = useMemo(() =>
+    agentStats.filter(a => {
+      const q = search.toLowerCase()
+      return !q || a.name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q) || (a.code ?? '').toLowerCase().includes(q)
+    }),
+    [search, agentStats],
+  )
 
   return (
     <div className="page" style={{ padding: '20px 28px 80px' }}>
       <div className="page-head">
         <div>
           <h1>Agents</h1>
-          <p>{agents.filter(a => a.active).length} active · {agents.length} total</p>
+          <p>{loading ? 'Loading…' : `${agents.filter(a => a.is_active).length} active · ${agents.length} total`}</p>
         </div>
         <div className="actions">
           <div className="seg">
@@ -51,50 +64,44 @@ export default function AgentsPage() {
         </div>
       </div>
 
-      <FilterBar
-        search={search} setSearch={setSearch}
-        placeholder="Search agents…"
-        chips={[
-          { label: 'Tier', value: tier, onClick: () => setTier(v => { const i = tiers.indexOf(v); return tiers[(i + 1) % (tiers.length + 1)] || '' }) },
-        ]}
-      />
+      <FilterBar search={search} setSearch={setSearch} placeholder="Search agents…" chips={[]} />
 
-      {view === 'grid' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16, marginTop: 16 }}>
+      {loading ? (
+        <div style={{ padding: 48, textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>Loading agents…</div>
+      ) : view === 'grid' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginTop: 20 }}>
           {filtered.map(a => (
-            <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer' }} onClick={() => router.push(`/agents/${a.id}`)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                <Avatar name={a.name} hue={a.hue} size="lg" />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{a.name}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{a.email}</div>
+            <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer', transition: 'box-shadow 0.15s' }}
+              onClick={() => router.push(`/agents/${a.id}`)}
+              onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-md)')}
+              onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <Avatar name={a.name} size="lg" hue={180} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>{a.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-4)' }}>{a.email}</div>
                 </div>
-                <Pill tone={tierTone(a.tier)}>{a.tier}</Pill>
+                <div style={{ marginLeft: 'auto' }}>
+                  <Pill tone={a.is_active ? 'pos' : 'neg'}>{a.is_active ? 'Active' : 'Inactive'}</Pill>
+                </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {[
-                  { label: 'MTD earned', val: fmt.moneyK(a.mtd) },
-                  { label: 'Total earned', val: fmt.moneyK(a.total) },
+                  { label: 'Commissions', val: fmt.moneyK(a.total) },
                   { label: 'Deals', val: String(a.dealCount) },
+                  { label: 'Active Deals', val: String(a.activeDeals) },
+                  { label: 'Volume', val: fmt.moneyK(a.totalVolume) },
                 ].map(s => (
-                  <div key={s.label} style={{ background: 'var(--bg-sunk)', borderRadius: 6, padding: '8px 10px' }}>
-                    <div className="num" style={{ fontSize: 14, fontWeight: 600 }}>{s.val}</div>
-                    <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }}>{s.label}</div>
+                  <div key={s.label} style={{ background: 'var(--bg-sunk)', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10.5, color: 'var(--ink-4)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', letterSpacing: '-0.02em' }}>{s.val}</div>
                   </div>
                 ))}
               </div>
-              {!a.active && <div style={{ marginTop: 10, fontSize: 11, color: 'var(--neg)' }}>Inactive</div>}
+              {a.code && <div style={{ marginTop: 12, fontSize: 11.5, color: 'var(--ink-4)' }}>Code: <span className="mono">{a.code}</span></div>}
             </div>
           ))}
-          {filtered.length === 0 && (
-            <div style={{ gridColumn: '1 / -1' }}>
-              <div className="empty-state">
-                <div className="empty-state-icon"><Icons.Search /></div>
-                <p className="empty-state-title">No results found</p>
-                <p className="empty-state-sub">Try adjusting your search or filters</p>
-              </div>
-            </div>
-          )}
         </div>
       ) : (
         <div className="card" style={{ marginTop: 16 }}>
@@ -102,9 +109,9 @@ export default function AgentsPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>Agent</th><th>Tier</th><th>Email</th>
-                  <th className="num">MTD</th><th className="num">Total earned</th>
-                  <th className="num">Deals</th><th>Status</th>
+                  <th>Agent</th><th>Email</th><th>Code</th>
+                  <th className="num">Commissions</th><th className="num">Deals</th>
+                  <th className="num">Volume</th><th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -112,27 +119,18 @@ export default function AgentsPage() {
                   <tr key={a.id} onClick={() => router.push(`/agents/${a.id}`)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <Avatar name={a.name} hue={a.hue} size="md" />
+                        <Avatar name={a.name} size="sm" hue={180} />
                         <span className="strong">{a.name}</span>
                       </div>
                     </td>
-                    <td><Pill tone={tierTone(a.tier)}>{a.tier}</Pill></td>
-                    <td className="muted" style={{ fontSize: 12 }}>{a.email}</td>
-                    <td className="num">{fmt.moneyK(a.mtd)}</td>
-                    <td className="num strong">{fmt.moneyK(a.total)}</td>
+                    <td className="muted">{a.email}</td>
+                    <td><span className="mono text-xs">{a.code ?? '—'}</span></td>
+                    <td className="num">{fmt.moneyK(a.total)}</td>
                     <td className="num">{a.dealCount}</td>
-                    <td><Pill tone={a.active ? 'pos' : 'neg'}>{a.active ? 'Active' : 'Inactive'}</Pill></td>
+                    <td className="num">{fmt.moneyK(a.totalVolume)}</td>
+                    <td><Pill tone={a.is_active ? 'pos' : 'neg'}>{a.is_active ? 'Active' : 'Inactive'}</Pill></td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={7}>
-                    <div className="empty-state">
-                      <div className="empty-state-icon"><Icons.Search /></div>
-                      <p className="empty-state-title">No results found</p>
-                      <p className="empty-state-sub">Try adjusting your search or filters</p>
-                    </div>
-                  </td></tr>
-                )}
               </tbody>
             </table>
           </div>

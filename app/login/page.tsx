@@ -1,6 +1,8 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 function DeltaLogoMark({ size = 48 }: { size?: number }) {
   return (
@@ -29,15 +31,28 @@ function DeltaLogoMark({ size = 48 }: { size?: number }) {
 }
 
 export default function LoginPage() {
+  const router = useRouter()
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    // UI only — no real auth
-    setTimeout(() => setLoading(false), 1200)
+    setError(null)
+
+    const supabase = createClient()
+    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (authErr) {
+      setError(authErr.message)
+      setLoading(false)
+      return
+    }
+
+    router.push('/dashboard')
+    router.refresh()
   }
 
   return (
@@ -256,6 +271,20 @@ export default function LoginPage() {
                   style={{ width: '100%' }}
                 />
               </div>
+
+              {/* Error */}
+              {error && (
+                <div style={{
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  background: 'oklch(0.95 0.03 25)',
+                  border: '1px solid oklch(0.88 0.06 25)',
+                  fontSize: 12.5,
+                  color: 'oklch(0.45 0.18 25)',
+                }}>
+                  {error}
+                </div>
+              )}
 
               {/* Submit */}
               <button

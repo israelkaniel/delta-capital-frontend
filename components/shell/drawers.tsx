@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { useShell } from './shell-provider'
 import { Drawer, Modal } from '@/components/ui/drawer'
 import { CommandPalette } from '@/components/ui/command-palette'
@@ -731,16 +732,162 @@ const EMPTY_DRAFT: DealDraft = {
   funder: null, fundingDate: '', notes: '', commissionRuleId: 'R-01', splits: [],
 }
 
-function NewDealWizard() {
+function DealLivePanel({ draft, commAmt, funderRule, orgRule }: {
+  draft: DealDraft
+  commAmt: number
+  funderRule: { name: string; rate: number; rateLabel: string; note: string } | null
+  orgRule: typeof ORG_RULES[number]
+}) {
+  const loanAmt = parseFloat(draft.amount.replace(/,/g, '')) || 0
+  const rows: [string, string | null | undefined][] = [
+    ['Client',       draft.client?.company],
+    ['Product',      draft.productType || null],
+    ['Industry',     draft.industry || null],
+    ['Amount',       loanAmt ? fmt.money(loanAmt) : null],
+    ['Rate',         draft.rate ? `${draft.rate}%` : null],
+    ['Term',         draft.term ? `${draft.term} mo` : null],
+    ['Funder',       draft.funder?.name],
+    ['Funding date', draft.fundingDate || null],
+  ]
+  const filled = rows.filter(([, v]) => v).length
+  return (
+    <div style={{ padding: '24px 20px', background: 'var(--bg-sunk)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto' }}>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-4)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 4 }}>Deal in Progress</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+          <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'var(--line)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${(filled / rows.length) * 100}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 0.3s' }} />
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>{filled}/{rows.length}</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {rows.map(([label, val]) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>{label}</div>
+            <div style={{ fontSize: 12.5, fontWeight: val ? 500 : 400, color: val ? 'var(--ink-1)' : 'var(--line)', textAlign: 'right', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val ?? '—'}</div>
+          </div>
+        ))}
+      </div>
+
+      {commAmt > 0 && (
+        <div style={{ padding: 16, border: '1px solid color-mix(in oklch, var(--pos) 35%, transparent)', borderRadius: 10, background: 'color-mix(in oklch, var(--pos) 8%, transparent)' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ink-4)', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: 6 }}>Est. Commission</div>
+          <div className="num" style={{ fontSize: 30, fontWeight: 700, color: 'var(--pos)', lineHeight: 1 }}>{fmt.moneyK(commAmt)}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 4 }}>
+            {funderRule ? funderRule.rateLabel : orgRule.rateLabel} × ${loanAmt.toLocaleString()}
+          </div>
+        </div>
+      )}
+
+      {draft.splits.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ink-4)', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: 10 }}>Agents ({draft.splits.length})</div>
+          {draft.splits.map(s => (
+            <div key={s.agent.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
+              <Avatar name={s.agent.name} hue={s.agent.hue} size="sm" />
+              <div style={{ flex: 1, fontSize: 12.5, fontWeight: 500 }}>{s.agent.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{s.pct}%</div>
+              {commAmt > 0 && <div className="num" style={{ fontSize: 12, color: 'var(--pos)', fontWeight: 600 }}>{fmt.moneyK(commAmt * (parseFloat(s.pct) || 0) / 100)}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {draft.notes && (
+        <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--bg-elev)' }}>
+          <span style={{ fontWeight: 600, color: 'var(--ink-4)', display: 'block', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>Notes</span>
+          {draft.notes}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const RATINGS = ['AAA', 'AA+', 'AA', 'A+', 'A', 'A-', 'BBB+', 'BBB', 'B+', 'B', 'B-', 'CCC']
+
+function DealCreatedToast({ show, dealId }: { show: boolean; dealId: string }) {
+  return (
+    <div className={`toast${show ? ' show' : ''}`}>
+      <div className="toast-check">
+        <Icons.Check style={{ color: 'white', width: 16, height: 16 }} />
+      </div>
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink-1)' }}>Deal created successfully</div>
+        <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>Opening record {dealId}…</div>
+      </div>
+    </div>
+  )
+}
+
+function NewDealWizard({ onCreated }: { onCreated: (dealId: string) => void }) {
   const { newDealOpen, setNewDealOpen } = useShell()
+  const router = useRouter()
   const [step, setStep] = useState(0)
   const [draft, setDraft] = useState<DealDraft>(EMPTY_DRAFT)
   const [agentQ, setAgentQ] = useState('')
   const [agentOpen, setAgentOpen] = useState(false)
+  const [localClients, setLocalClients] = useState(() => [...clients])
+  const [newClientMode, setNewClientMode] = useState(false)
+  const [newClientDraft, setNewClientDraft] = useState({ company: '', sector: '', rating: 'B+' })
 
   const steps = ['Client & Product', 'Funder & Terms', 'Agents & Split', 'Review']
 
-  const close = () => { setNewDealOpen(false); setStep(0); setDraft(EMPTY_DRAFT); setAgentQ('') }
+  const close = () => {
+    setNewDealOpen(false); setStep(0); setDraft(EMPTY_DRAFT); setAgentQ('')
+    setNewClientMode(false); setNewClientDraft({ company: '', sector: '', rating: 'B+' })
+  }
+
+  const handleCreate = () => {
+    const maxId = deals.reduce((max, d) => Math.max(max, parseInt(d.id.replace('DL-', '')) || 0), 0)
+    const newId = `DL-${maxId + 1}`
+    const loanAmt = parseFloat(draft.amount.replace(/,/g, '')) || 0
+    const today = new Date().toISOString().slice(0, 10)
+    const newDeal: Deal = {
+      id: newId,
+      client: draft.client?.company ?? '',
+      clientId: draft.client?.id ?? '',
+      amount: loanAmt,
+      rate: parseFloat(draft.rate) || 0,
+      term: parseInt(draft.term) || 0,
+      funder: draft.funder?.name ?? '',
+      funderId: draft.funder?.id ?? '',
+      status: 'Pending',
+      stage: 'Application',
+      closed: draft.fundingDate || today,
+      maturity: today,
+      agents: draft.splits.map(s => s.agent.id),
+      productType: draft.productType,
+      industry: draft.industry,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: 'Noam Harel',
+      updatedBy: 'Noam Harel',
+    }
+    deals.push(newDeal)
+    close()
+    onCreated(newId)
+    setTimeout(() => router.push(`/deals/${newId}`), 1800)
+  }
+
+  const createClient = () => {
+    if (!newClientDraft.company.trim()) return
+    const newId = `CL-${Date.now().toString().slice(-4)}`
+    const newClient: Client = {
+      id: newId,
+      company: newClientDraft.company.trim(),
+      sector: newClientDraft.sector || 'Other',
+      since: new Date().toISOString().slice(0, 10),
+      openDeals: 0,
+      exposure: 0,
+      rating: newClientDraft.rating,
+    }
+    setLocalClients(prev => [...prev, newClient])
+    setDraft(d => ({ ...d, client: newClient, industry: newClient.sector }))
+    setNewClientMode(false)
+    setNewClientDraft({ company: '', sector: '', rating: 'B+' })
+  }
 
   const funderRule = draft.funder ? FUNDER_RULES[draft.funder.id] ?? null : null
   const orgRule    = ORG_RULES.find(r => r.id === draft.commissionRuleId) ?? ORG_RULES[0]
@@ -759,7 +906,7 @@ function NewDealWizard() {
   }
 
   return (
-    <Modal open={newDealOpen} onClose={close} wide>
+    <Modal open={newDealOpen} onClose={close} xl>
       <div className="modal-head">
         <div style={{ flex: 1 }}>
           <h2>New Deal</h2>
@@ -778,25 +925,74 @@ function NewDealWizard() {
         ))}
       </div>
 
-      <div className="modal-body">
+      <div className="modal-body" style={{ padding: 0, display: 'grid', gridTemplateColumns: '1fr 300px', overflow: 'hidden', flex: 1 }}>
+        <div style={{ padding: 28, overflowY: 'auto' }}>
 
         {/* ── Step 1: Client & Product ── */}
         {step === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="field">
               <label>Client <span style={{ color: 'var(--neg)' }}>*</span></label>
-              <SearchCombo
-                items={clients}
-                getLabel={c => c.company}
-                getSub={c => `${c.id} · ${c.sector} · Rating: ${c.rating}`}
-                placeholder="Search existing clients…"
-                selected={draft.client}
-                onSelect={c => setDraft(d => ({ ...d, client: c, industry: c ? c.sector : d.industry }))}
-              />
-              <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 4 }}>
-                Can&apos;t find the client?{' '}
-                <span style={{ color: 'var(--accent-ink)', cursor: 'pointer', fontWeight: 500 }}>Create new client</span>
-              </div>
+              {!newClientMode && (
+                <>
+                  <SearchCombo
+                    items={localClients}
+                    getLabel={c => c.company}
+                    getSub={c => `${c.id} · ${c.sector} · Rating: ${c.rating}`}
+                    placeholder="Search existing clients…"
+                    selected={draft.client}
+                    onSelect={c => setDraft(d => ({ ...d, client: c, industry: c ? c.sector : d.industry }))}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 4 }}>
+                    Can&apos;t find the client?{' '}
+                    <span
+                      style={{ color: 'var(--accent-ink)', cursor: 'pointer', fontWeight: 500 }}
+                      onClick={() => { setNewClientMode(true); setDraft(d => ({ ...d, client: null })) }}
+                    >+ Create new client</span>
+                  </div>
+                </>
+              )}
+              {newClientMode && (
+                <div style={{ border: '1.5px solid var(--accent)', borderRadius: 10, padding: 16, background: 'var(--accent-soft)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>New client</div>
+                    <button className="btn sm ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setNewClientMode(false)}>Cancel</button>
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Company name <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <input
+                      className="input"
+                      placeholder="Acme Corp…"
+                      value={newClientDraft.company}
+                      onChange={e => setNewClientDraft(d => ({ ...d, company: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') createClient() }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>Sector</label>
+                      <select className="input" value={newClientDraft.sector} onChange={e => setNewClientDraft(d => ({ ...d, sector: e.target.value }))}>
+                        <option value="">Select…</option>
+                        {INDUSTRIES.map(i => <option key={i}>{i}</option>)}
+                      </select>
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>Credit rating</label>
+                      <select className="input" value={newClientDraft.rating} onChange={e => setNewClientDraft(d => ({ ...d, rating: e.target.value }))}>
+                        {RATINGS.map(r => <option key={r}>{r}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <button
+                    className="btn primary"
+                    style={{ alignSelf: 'flex-start' }}
+                    disabled={!newClientDraft.company.trim()}
+                    onClick={createClient}
+                  >
+                    <Icons.Check /> Create &amp; select
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div className="field">
@@ -1010,6 +1206,8 @@ function NewDealWizard() {
             )}
           </div>
         )}
+        </div>{/* end scrollable form column */}
+        <DealLivePanel draft={draft} commAmt={commAmt} funderRule={funderRule} orgRule={orgRule} />
       </div>
 
       <div className="modal-foot">
@@ -1017,7 +1215,7 @@ function NewDealWizard() {
         <div style={{ flex: 1 }} />
         {step < steps.length - 1
           ? <button className="btn primary" onClick={() => setStep(s => s + 1)}>Continue →</button>
-          : <button className="btn primary" onClick={close}>Create deal</button>
+          : <button className="btn primary" onClick={handleCreate}>Create deal</button>
         }
       </div>
     </Modal>
@@ -1027,6 +1225,12 @@ function NewDealWizard() {
 // ─── Main export: all overlays ─────────────────────────────────────────────────
 export function ShellOverlays() {
   const { drawer, closeDrawer, cmdOpen, setCmdOpen } = useShell()
+  const [toast, setToast] = useState({ visible: false, dealId: '' })
+
+  const handleDealCreated = (dealId: string) => {
+    setToast({ visible: true, dealId })
+    setTimeout(() => setToast({ visible: false, dealId: '' }), 2200)
+  }
 
   return (
     <>
@@ -1038,8 +1242,9 @@ export function ShellOverlays() {
         {drawer.kind === 'funder'     && <FunderDetail funder={drawer.entity as Funder} />}
       </Drawer>
       <NotificationsPanel />
-      <NewDealWizard />
+      <NewDealWizard onCreated={handleDealCreated} />
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
+      <DealCreatedToast show={toast.visible} dealId={toast.dealId} />
     </>
   )
 }

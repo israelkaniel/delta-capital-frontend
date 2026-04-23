@@ -1,21 +1,45 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { monthly, commissions, deals } from '@/lib/data'
-import { BarChart, AreaChart } from '@/components/ui/charts'
+import { api, type DbMonthlySummary } from '@/lib/api'
+import { BarChart } from '@/components/ui/charts'
 
 export default function MonthlyPage() {
-  const sorted = [...monthly].sort((a, b) => a.month.localeCompare(b.month))
+  const now   = new Date()
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year, setYear]   = useState(now.getFullYear())
+  const [data, setData]   = useState<{ closed: boolean; summaries: DbMonthlySummary[] } | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const totalVolume = monthly.reduce((a, m) => a + m.volume, 0)
-  const totalComm = monthly.reduce((a, m) => a + m.commissions, 0)
-  const totalDeals = monthly.reduce((a, m) => a + m.deals, 0)
+  useEffect(() => {
+    setLoading(true)
+    api.reports.monthly(month, year).then(res => {
+      setData(res.data ? { closed: (res.data as any).closed, summaries: (res.data as any).summaries ?? [] } : null)
+      setLoading(false)
+    })
+  }, [month, year])
+
+  const summaries = data?.summaries ?? []
+  const totals = summaries.reduce(
+    (acc, s) => ({
+      earned:   acc.earned   + Number(s.total_earned),
+      reserved: acc.reserved + Number(s.total_reserved),
+      released: acc.released + Number(s.total_released),
+      reversed: acc.reversed + Number(s.total_reversed),
+      paid:     acc.paid     + Number(s.total_paid),
+      balance:  acc.balance  + Number(s.balance),
+    }),
+    { earned: 0, reserved: 0, released: 0, reversed: 0, paid: 0, balance: 0 },
+  )
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
   const kpis = [
-    { label: 'Total volume (period)', val: fmt.moneyK(totalVolume) },
-    { label: 'Total commissions', val: fmt.moneyK(totalComm) },
-    { label: 'Total deals', val: String(totalDeals) },
-    { label: 'Avg commission rate', val: ((totalComm / totalVolume) * 100).toFixed(2) + '%' },
+    { label: 'Total earned',   val: fmt.moneyK(totals.earned) },
+    { label: 'In reserve',     val: fmt.moneyK(totals.reserved - totals.released) },
+    { label: 'Paid out',       val: fmt.moneyK(totals.paid) },
+    { label: 'Net balance',    val: fmt.moneyK(totals.balance) },
   ]
 
   return (
@@ -23,9 +47,15 @@ export default function MonthlyPage() {
       <div className="page-head">
         <div>
           <h1>Monthly</h1>
-          <p>6-month rolling summary</p>
+          <p>{data?.closed ? 'Closed period' : 'Open period — live data'}</p>
         </div>
-        <div className="actions">
+        <div className="actions" style={{ gap: 8 }}>
+          <select value={month} onChange={e => setMonth(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--ink-1)', fontSize: 12, outline: 'none' }}>
+            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+          <select value={year} onChange={e => setYear(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--ink-1)', fontSize: 12, outline: 'none' }}>
+            {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
           <button className="btn"><Icons.Download /> Export</button>
         </div>
       </div>
@@ -39,69 +69,50 @@ export default function MonthlyPage() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-        <div className="card">
-          <div className="card-head"><div><h3>Volume by month</h3><div className="sub">Funded volume</div></div></div>
-          <div className="card-body">
-            <AreaChart
-              data={sorted.map(m => ({ x: fmt.monthLabel(m.month), y: m.volume }))}
-              height={220}
-            />
-          </div>
-        </div>
-        <div className="card">
-          <div className="card-head"><div><h3>Paid vs pending</h3><div className="sub">Commissions by month</div></div></div>
-          <div className="card-body">
-            <BarChart
-              data={sorted.map(m => ({ x: fmt.monthLabel(m.month), a: m.paid, b: m.pending }))}
-              series={['a', 'b']} labels={{ a: 'Paid', b: 'Pending' }}
-              colors={['var(--accent)', 'var(--ink-4)']} height={220}
-            />
-          </div>
-        </div>
-      </div>
-
       <div className="card">
-        <div className="card-head"><h3>Month-by-month breakdown</h3></div>
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Month</th>
-                <th className="num">Volume</th>
-                <th className="num">Commissions</th>
-                <th className="num">Deals</th>
-                <th className="num">Paid</th>
-                <th className="num">Pending</th>
-                <th className="num">Eff. rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(m => (
-                <tr key={m.month}>
-                  <td className="strong">{fmt.monthLabel(m.month)}</td>
-                  <td className="num">{fmt.money(m.volume)}</td>
-                  <td className="num">{fmt.money(m.commissions)}</td>
-                  <td className="num">{m.deals}</td>
-                  <td className="num" style={{ color: 'var(--pos)' }}>{fmt.money(m.paid)}</td>
-                  <td className="num" style={{ color: m.pending > 0 ? 'var(--warn)' : 'var(--ink-4)' }}>{fmt.money(m.pending)}</td>
-                  <td className="num muted">{((m.commissions / m.volume) * 100).toFixed(2)}%</td>
+        {loading ? (
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>Loading…</div>
+        ) : summaries.length === 0 ? (
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>No data for this period</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th className="num">Opening</th><th className="num">Earned</th>
+                  <th className="num">Reserved</th><th className="num">Released</th>
+                  <th className="num">Reversed</th><th className="num">Paid</th>
+                  <th className="num">Closing</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ fontWeight: 600 }}>
-                <td>Total</td>
-                <td className="num">{fmt.money(totalVolume)}</td>
-                <td className="num">{fmt.money(totalComm)}</td>
-                <td className="num">{totalDeals}</td>
-                <td className="num" style={{ color: 'var(--pos)' }}>{fmt.money(monthly.reduce((a, m) => a + m.paid, 0))}</td>
-                <td className="num" style={{ color: 'var(--warn)' }}>{fmt.money(monthly.reduce((a, m) => a + m.pending, 0))}</td>
-                <td className="num muted">{((totalComm / totalVolume) * 100).toFixed(2)}%</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {summaries.map((s, i) => (
+                  <tr key={i}>
+                    <td><span className="strong">{s.agent_name ?? s.agent_code ?? '—'}</span></td>
+                    <td className="num">{fmt.money(Number(s.opening_balance ?? 0))}</td>
+                    <td className="num">{fmt.money(Number(s.total_earned))}</td>
+                    <td className="num">{fmt.money(Number(s.total_reserved))}</td>
+                    <td className="num">{fmt.money(Number(s.total_released))}</td>
+                    <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(Number(s.total_reversed))}</td>
+                    <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(Number(s.total_paid))}</td>
+                    <td className="num" style={{ fontWeight: 700 }}>{fmt.money(Number(s.closing_balance ?? s.balance))}</td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: '2px solid var(--line)', fontWeight: 700 }}>
+                  <td>Total</td>
+                  <td className="num">—</td>
+                  <td className="num">{fmt.money(totals.earned)}</td>
+                  <td className="num">{fmt.money(totals.reserved)}</td>
+                  <td className="num">{fmt.money(totals.released)}</td>
+                  <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(totals.reversed)}</td>
+                  <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(totals.paid)}</td>
+                  <td className="num">{fmt.money(totals.balance)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
