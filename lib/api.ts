@@ -25,7 +25,11 @@ export interface DbAgentRule {
   agent_commission_tiers?: { id: string; min_amount: number; max_amount: number | null; rate: number }[]
 }
 
-export interface DbAccount  { id: string; name: string; notes?: string; created_at: string }
+export interface DbAccount  {
+  id: string; name: string; notes?: string; created_at: string
+  contacts?: DbContact[]
+  deals?: DbDeal[]
+}
 export interface DbContact  { id: string; account_id: string; name: string; email?: string; phone?: string; external_id?: string }
 
 export interface DbDealAgent {

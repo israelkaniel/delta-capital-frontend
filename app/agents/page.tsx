@@ -7,6 +7,7 @@ import { api, type DbAgent, type DbAgentPerformance } from '@/lib/api'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
+import { AgentEditor } from '@/components/agents/agent-editor'
 
 export default function AgentsPage() {
   const router = useRouter()
@@ -15,14 +16,18 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [view, setView]     = useState<'grid' | 'table'>('grid')
+  const [editorOpen, setEditorOpen] = useState(false)
 
-  useEffect(() => {
+  const refresh = () => {
+    setLoading(true)
     Promise.all([api.agents.list(), api.reports.agents()]).then(([agentsRes, perfRes]) => {
       setAgents(agentsRes.data ?? [])
       setPerf(perfRes.data?.agents ?? [])
       setLoading(false)
     })
-  }, [])
+  }
+
+  useEffect(() => { refresh() }, [])
 
   const agentStats = useMemo(() =>
     agents.map(a => {
@@ -60,7 +65,7 @@ export default function AgentsPage() {
             <button className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')}><Icons.Grid /></button>
             <button className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}><Icons.Table /></button>
           </div>
-          <button className="btn primary"><Icons.Plus /> Add agent</button>
+          <button className="btn primary" onClick={() => setEditorOpen(true)}><Icons.Plus /> Add agent</button>
         </div>
       </div>
 
@@ -136,6 +141,8 @@ export default function AgentsPage() {
           </div>
         </div>
       )}
+
+      <AgentEditor open={editorOpen} onClose={() => setEditorOpen(false)} onDone={refresh} />
     </div>
   )
 }

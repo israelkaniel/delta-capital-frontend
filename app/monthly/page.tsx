@@ -1,9 +1,8 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, type DbMonthlySummary } from '@/lib/api'
-import { BarChart } from '@/components/ui/charts'
 
 export default function MonthlyPage() {
   const now   = new Date()
@@ -11,14 +10,29 @@ export default function MonthlyPage() {
   const [year, setYear]   = useState(now.getFullYear())
   const [data, setData]   = useState<{ closed: boolean; summaries: DbMonthlySummary[] } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [closing, setClosing] = useState(false)
+  const [closeError, setCloseError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     setLoading(true)
+    setCloseError(null)
     api.reports.monthly(month, year).then(res => {
       setData(res.data ? { closed: (res.data as any).closed, summaries: (res.data as any).summaries ?? [] } : null)
       setLoading(false)
     })
   }, [month, year])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  const closeMonth = async () => {
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    if (!confirm(`Close ${MONTHS[month - 1]} ${year}? This locks the period and persists monthly summaries. It cannot be undone.`)) return
+    setClosing(true); setCloseError(null)
+    const res = await api.monthlyClose.execute(month, year)
+    setClosing(false)
+    if (res.error) { setCloseError(res.error.message); return }
+    refresh()
+  }
 
   const summaries = data?.summaries ?? []
   const totals = summaries.reduce(
@@ -56,9 +70,31 @@ export default function MonthlyPage() {
           <select value={year} onChange={e => setYear(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--ink-1)', fontSize: 12, outline: 'none' }}>
             {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <button className="btn"><Icons.Download /> Export</button>
+          {!data?.closed && (
+            <button className="btn primary" onClick={closeMonth} disabled={closing || summaries.length === 0}>
+              <Icons.Check /> {closing ? 'Closing…' : 'Close this period'}
+            </button>
+          )}
         </div>
       </div>
+
+      {closeError && (
+        <div style={{
+          background: 'var(--neg-soft)', border: '1px solid var(--neg-line)', color: 'var(--neg)',
+          padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
+        }}>{closeError}</div>
+      )}
+
+      {data?.closed && (
+        <div style={{
+          background: 'var(--accent-soft)', color: 'var(--accent-ink)',
+          padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <Icons.Check style={{ width: 14, height: 14 }} />
+          This period is closed — balances are locked to the snapshot taken at close time.
+        </div>
+      )}
 
       <div className="kpi-grid" style={{ marginBottom: 20 }}>
         {kpis.map((k, i) => (

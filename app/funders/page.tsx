@@ -7,6 +7,7 @@ import { api, type DbFunder } from '@/lib/api'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
+import { FunderEditor } from '@/components/funders/funder-editor'
 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
 
@@ -15,13 +16,17 @@ export default function FundersPage() {
   const [funders, setFunders] = useState<DbFunder[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch]   = useState('')
+  const [editorOpen, setEditorOpen] = useState(false)
 
-  useEffect(() => {
+  const refresh = () => {
+    setLoading(true)
     api.funders.list().then(res => {
       setFunders(res.data ?? [])
       setLoading(false)
     })
-  }, [])
+  }
+
+  useEffect(() => { refresh() }, [])
 
   const filtered = useMemo(() =>
     funders.filter(f => {
@@ -39,7 +44,7 @@ export default function FundersPage() {
           <p>{loading ? 'Loading…' : `${funders.filter(f => f.is_active).length} active funders`}</p>
         </div>
         <div className="actions">
-          <button className="btn primary"><Icons.Plus /> Add funder</button>
+          <button className="btn primary" onClick={() => setEditorOpen(true)}><Icons.Plus /> Add funder</button>
         </div>
       </div>
 
@@ -85,6 +90,8 @@ export default function FundersPage() {
           </div>
         )}
       </div>
+
+      <FunderEditor open={editorOpen} onClose={() => setEditorOpen(false)} onDone={refresh} />
     </div>
   )
 }

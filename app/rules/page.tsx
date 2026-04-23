@@ -1,210 +1,249 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Icons } from '@/lib/icons'
 import { Pill } from '@/components/ui/pill'
+import { fmt } from '@/lib/fmt'
+import { api, type DbFunder, type DbAgent, type DbGlobalRule, type DbAgentRule } from '@/lib/api'
+import { RuleEditor } from '@/components/rules/rule-editor'
 
-type Rule = {
-  id: string; name: string; type: string; condition: string;
-  rate: string; active: boolean; priority: number
+const TABS = [
+  { key: 'global', label: 'Global rules' },
+  { key: 'agent',  label: 'Agent overrides' },
+] as const
+
+type TabKey = typeof TABS[number]['key']
+
+const isActive = (r: { valid_from: string; valid_to: string | null }) => {
+  const now = new Date().toISOString().split('T')[0]
+  if (r.valid_from > now) return false
+  if (r.valid_to && r.valid_to < now) return false
+  return true
 }
 
-const DEFAULT_RULES: Rule[] = [
-  { id: 'R-01', name: 'Standard Funder Fee',      type: 'Funder',   condition: 'All deals',                   rate: '2.00%', active: true,  priority: 1 },
-  { id: 'R-02', name: 'Meridian Tiered Bonus',    type: 'Funder',   condition: 'Meridian · deal > $2M',       rate: '+0.25%',active: true,  priority: 2 },
-  { id: 'R-03', name: 'Senior Agent Split',       type: 'Split',    condition: 'Senior tier agents',          rate: '60/40', active: true,  priority: 3 },
-  { id: 'R-04', name: 'Partner Override',         type: 'Override', condition: 'Partner tier agents',         rate: 'Flat 3.0%', active: true, priority: 4 },
-  { id: 'R-05', name: 'Borrower Origination Fee', type: 'Borrower', condition: 'In-house funded deals',       rate: '3.00%', active: true,  priority: 5 },
-  { id: 'R-06', name: 'Bridge Deal Uplift',       type: 'Funder',   condition: 'Product: Bridge',             rate: '+0.50%',active: false, priority: 6 },
-  { id: 'R-07', name: 'Junior Agent Cap',         type: 'Cap',      condition: 'Junior tier · max monthly',  rate: '$25K',  active: true,  priority: 7 },
-]
-
-const typeTone = (t: string) => t === 'Funder' ? 'accent' : t === 'Split' ? 'info' : t === 'Override' ? 'warn' : t === 'Cap' ? 'neg' : 'default'
-
-type DraftRule = Rule & { description: string }
+const formatRate = (r: { type: string; fixed_rate: number | null; commission_tiers?: { rate: number }[]; agent_commission_tiers?: { rate: number }[] }) => {
+  if (r.type === 'FIXED_PERCENT') return r.fixed_rate != null ? `${Number(r.fixed_rate)}%` : '—'
+  const tiers = r.commission_tiers ?? r.agent_commission_tiers ?? []
+  if (tiers.length === 0) return 'Tiered (no tiers)'
+  const min = Math.min(...tiers.map(t => Number(t.rate)))
+  const max = Math.max(...tiers.map(t => Number(t.rate)))
+  return min === max ? `${min}%` : `${min}–${max}%`
+}
 
 export default function RulesPage() {
-  const [rules, setRules] = useState<Rule[]>(DEFAULT_RULES)
-  const [editingRule, setEditingRule] = useState<Rule | null>(null)
-  const [draftRule, setDraftRule] = useState<DraftRule | null>(null)
+  const [tab, setTab] = useState<TabKey>('global')
+  const [funders, setFunders] = useState<DbFunder[]>([])
+  const [agents, setAgents] = useState<DbAgent[]>([])
+  const [globalRules, setGlobalRules] = useState<DbGlobalRule[]>([])
+  const [agentRules, setAgentRules] = useState<DbAgentRule[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showInactive, setShowInactive] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editing, setEditing] = useState<DbGlobalRule | DbAgentRule | undefined>(undefined)
 
-  const toggle = (id: string) => {
-    setRules(rules.map(r => r.id === id ? { ...r, active: !r.active } : r))
-  }
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    const [f, a, g, ar] = await Promise.all([
+      api.funders.list(),
+      api.agents.list(),
+      api.rules.globalList(),
+      api.rules.agentList(),
+    ])
+    setFunders(f.data ?? [])
+    setAgents(a.data ?? [])
+    setGlobalRules(g.data ?? [])
+    setAgentRules(ar.data ?? [])
+    setLoading(false)
+  }, [])
 
-  const openEdit = (rule: Rule) => {
-    setEditingRule(rule)
-    setDraftRule({ ...rule, description: '' })
-  }
+  useEffect(() => { refresh() }, [refresh])
 
-  const closeEdit = () => {
-    setEditingRule(null)
-    setDraftRule(null)
-  }
+  const visibleGlobal = useMemo(
+    () => showInactive ? globalRules : globalRules.filter(isActive),
+    [globalRules, showInactive],
+  )
+  const visibleAgent = useMemo(
+    () => showInactive ? agentRules : agentRules.filter(isActive),
+    [agentRules, showInactive],
+  )
 
-  const saveEdit = () => {
-    if (!draftRule) return
-    setRules(rules.map(r => r.id === draftRule.id
-      ? { ...r, name: draftRule.name, rate: draftRule.rate, active: draftRule.active, condition: draftRule.condition }
-      : r
-    ))
-    closeEdit()
+  const groupedGlobal = useMemo(() => {
+    const map = new Map<string, { funder: { id: string; name: string }; rules: DbGlobalRule[] }>()
+    for (const r of visibleGlobal) {
+      const f = (r as any).funders ?? funders.find(x => x.id === r.funder_id)
+      const fid = f?.id ?? r.funder_id
+      const key = fid
+      if (!map.has(key)) map.set(key, { funder: { id: fid, name: f?.name ?? '—' }, rules: [] })
+      map.get(key)!.rules.push(r)
+    }
+    return Array.from(map.values())
+  }, [visibleGlobal, funders])
+
+  const groupedAgent = useMemo(() => {
+    const map = new Map<string, { agent: { id: string; name: string }; rules: DbAgentRule[] }>()
+    for (const r of visibleAgent) {
+      const a = (r as any).agents ?? agents.find(x => x.id === r.agent_id)
+      const aid = r.agent_id
+      const name = a?.profiles?.name ?? a?.code ?? aid.slice(0, 8)
+      if (!map.has(aid)) map.set(aid, { agent: { id: aid, name }, rules: [] })
+      map.get(aid)!.rules.push(r)
+    }
+    return Array.from(map.values())
+  }, [visibleAgent, agents])
+
+  const onEdit = (r: DbGlobalRule | DbAgentRule) => { setEditing(r); setEditorOpen(true) }
+  const onAdd  = () => { setEditing(undefined); setEditorOpen(true) }
+
+  const onDeactivate = async (id: string) => {
+    if (!confirm('Deactivate this rule? It will keep its history but stop applying to new deals.')) return
+    const res = tab === 'global' ? await api.rules.globalDeactivate(id) : await api.rules.agentDeactivate(id)
+    if (res.error) alert(res.error.message)
+    refresh()
   }
 
   return (
     <div className="page" style={{ padding: '20px 28px 80px' }}>
       <div className="page-head">
         <div>
-          <h1>Rules</h1>
-          <p>Commission calculation rules · applied in priority order</p>
+          <h1>Commission rules</h1>
+          <p>{loading ? 'Loading…' : `${globalRules.length} global · ${agentRules.length} agent overrides`}</p>
         </div>
         <div className="actions">
-          <button className="btn"><Icons.Download /> Export</button>
-          <button className="btn primary"><Icons.Plus /> Add rule</button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-3)' }}>
+            <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+            Show inactive
+          </label>
+          <button className="btn primary" onClick={onAdd}>
+            <Icons.Plus /> {tab === 'global' ? 'New global rule' : 'New agent override'}
+          </button>
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <div><h3>Active ruleset</h3><div className="sub">{rules.filter(r => r.active).length} of {rules.length} rules active</div></div>
-          <div className="actions">
-            <button className="btn sm ghost">Reset to defaults</button>
-            <button className="btn sm">Save version</button>
-          </div>
-        </div>
-        <div className="card-body flush">
-          {rules.map((r, i) => (
-            <div
-              key={r.id}
-              style={{
-                padding: '14px 18px',
-                borderBottom: i < rules.length - 1 ? '1px solid var(--line)' : 'none',
-                display: 'flex', alignItems: 'center', gap: 14,
-                opacity: r.active ? 1 : 0.45,
-              }}
-            >
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)', width: 20, textAlign: 'center', cursor: 'grab' }}>
-                <Icons.Drag style={{ width: 14, height: 14 }} />
-              </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)', width: 16 }}>{r.priority}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontWeight: 500, fontSize: 13 }}>{r.name}</span>
-                  <Pill tone={typeTone(r.type)}>{r.type}</Pill>
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        {TABS.map(t => (
+          <button key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
+            {t.label}
+            <span className="badge">{t.key === 'global' ? globalRules.length : agentRules.length}</span>
+          </button>
+        ))}
+      </div>
+
+      {tab === 'global' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {groupedGlobal.length === 0 && !loading && (
+            <div className="card"><div className="card-body" style={{ textAlign: 'center', color: 'var(--ink-4)' }}>
+              No global rules yet. Click &quot;New global rule&quot; to get started.
+            </div></div>
+          )}
+          {groupedGlobal.map(({ funder, rules }) => (
+            <div className="card" key={funder.id}>
+              <div className="card-head">
+                <div>
+                  <h3>{funder.name}</h3>
+                  <div className="sub">{rules.length} rule{rules.length !== 1 ? 's' : ''}</div>
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{r.condition}</div>
               </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--ink-1)', minWidth: 64, textAlign: 'right' }}>{r.rate}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button className="btn sm ghost" onClick={() => openEdit(r)}>Edit</button>
-                <label className="toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12 }}>
-                  <input type="checkbox" checked={r.active} onChange={() => toggle(r.id)} style={{ display: 'none' }} />
-                  <div style={{
-                    width: 32, height: 18, borderRadius: 9, background: r.active ? 'var(--accent)' : 'var(--ink-5)',
-                    transition: 'background 0.2s', position: 'relative',
+              <div className="card-body flush">
+                {rules.map((r, i) => (
+                  <div key={r.id} style={{
+                    padding: '14px 18px',
+                    borderBottom: i < rules.length - 1 ? '1px solid var(--line)' : 'none',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    opacity: isActive(r) ? 1 : 0.5,
                   }}>
-                    <div style={{
-                      position: 'absolute', top: 3, left: r.active ? 16 : 3, width: 12, height: 12,
-                      borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
-                    }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                        <Pill tone="info">{r.type === 'FIXED_PERCENT' ? 'Fixed' : 'Tiered'}</Pill>
+                        {!isActive(r) && <Pill tone="default">Inactive</Pill>}
+                        {r.notes && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{r.notes}</span>}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+                        Valid {fmt.dateShort(r.valid_from)} → {r.valid_to ? fmt.dateShort(r.valid_to) : '∞'}
+                        {r.commission_tiers && r.commission_tiers.length > 0 && (
+                          <span style={{ marginLeft: 12 }}>{r.commission_tiers.length} tier{r.commission_tiers.length !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: 'right' }}>
+                      {formatRate(r)}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn sm ghost" onClick={() => onEdit(r)}>Edit</button>
+                      {isActive(r) && (
+                        <button className="btn sm danger" onClick={() => onDeactivate(r.id)}>Deactivate</button>
+                      )}
+                    </div>
                   </div>
-                </label>
+                ))}
               </div>
             </div>
           ))}
         </div>
-      </div>
+      )}
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="card-head"><h3>Rule history</h3></div>
-        <div className="card-body" style={{ color: 'var(--ink-4)', fontSize: 13, padding: '20px 18px' }}>
-          Version history and audit log coming soon.
-        </div>
-      </div>
-
-      {editingRule && draftRule && (
-        <div className="modal-overlay open" onClick={closeEdit}>
-          <div className="modal" style={{ width: 480 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <span>Edit rule</span>
-              <button className="close-btn" onClick={closeEdit} aria-label="Close">
-                <Icons.X style={{ width: 16, height: 16 }} />
-              </button>
-            </div>
-
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="field">
-                <label style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-2)', display: 'block', marginBottom: 6 }}>
-                  Name
-                </label>
-                <input
-                  className="input"
-                  value={draftRule.name}
-                  onChange={e => setDraftRule({ ...draftRule, name: e.target.value })}
-                  placeholder="Rule name"
-                />
-              </div>
-
-              <div className="field">
-                <label style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-2)', display: 'block', marginBottom: 6 }}>
-                  Value / Rate
-                </label>
-                <input
-                  className="input"
-                  value={draftRule.rate}
-                  onChange={e => setDraftRule({ ...draftRule, rate: e.target.value })}
-                  placeholder="e.g. 2.00% or $25K"
-                />
-              </div>
-
-              <div className="field">
-                <label style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-2)', display: 'block', marginBottom: 6 }}>
-                  Description / Condition
-                </label>
-                <textarea
-                  className="input"
-                  value={draftRule.condition}
-                  onChange={e => setDraftRule({ ...draftRule, condition: e.target.value })}
-                  placeholder="Condition or description"
-                  rows={3}
-                  style={{ resize: 'vertical', fontFamily: 'inherit' }}
-                />
-              </div>
-
-              <div className="field" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {tab === 'agent' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {groupedAgent.length === 0 && !loading && (
+            <div className="card"><div className="card-body" style={{ textAlign: 'center', color: 'var(--ink-4)' }}>
+              No agent-specific rules. Add overrides to grant agents bonuses or replacement rates.
+            </div></div>
+          )}
+          {groupedAgent.map(({ agent, rules }) => (
+            <div className="card" key={agent.id}>
+              <div className="card-head">
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>Active</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>Include this rule in commission calculations</div>
+                  <h3>{agent.name}</h3>
+                  <div className="sub">{rules.length} override{rules.length !== 1 ? 's' : ''}</div>
                 </div>
-                <label style={{ cursor: 'pointer' }} aria-label="Toggle rule active">
-                  <input
-                    type="checkbox"
-                    checked={draftRule.active}
-                    onChange={() => setDraftRule({ ...draftRule, active: !draftRule.active })}
-                    style={{ display: 'none' }}
-                  />
-                  <div style={{
-                    width: 32, height: 18, borderRadius: 9,
-                    background: draftRule.active ? 'var(--accent)' : 'var(--ink-5)',
-                    transition: 'background 0.2s', position: 'relative',
-                  }}>
-                    <div style={{
-                      position: 'absolute', top: 3,
-                      left: draftRule.active ? 16 : 3,
-                      width: 12, height: 12,
-                      borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
-                    }} />
-                  </div>
-                </label>
+              </div>
+              <div className="card-body flush">
+                {rules.map((r, i) => {
+                  const f = (r as any).funders ?? funders.find(x => x.id === r.funder_id)
+                  return (
+                    <div key={r.id} style={{
+                      padding: '14px 18px',
+                      borderBottom: i < rules.length - 1 ? '1px solid var(--line)' : 'none',
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      opacity: isActive(r) ? 1 : 0.5,
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>{f?.name ?? 'Funder'}</span>
+                          <Pill tone={r.mode === 'REPLACE' ? 'warn' : 'accent'}>{r.mode === 'ADD_ON' ? '+ Add on' : 'Replaces global'}</Pill>
+                          <Pill tone="info">{r.type === 'FIXED_PERCENT' ? 'Fixed' : 'Tiered'}</Pill>
+                          {!isActive(r) && <Pill tone="default">Inactive</Pill>}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+                          Valid {fmt.dateShort(r.valid_from)} → {r.valid_to ? fmt.dateShort(r.valid_to) : '∞'}
+                          {r.notes && <span style={{ marginLeft: 12 }}>{r.notes}</span>}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: 'right' }}>
+                        {formatRate(r)}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn sm ghost" onClick={() => onEdit(r)}>Edit</button>
+                        {isActive(r) && (
+                          <button className="btn sm danger" onClick={() => onDeactivate(r.id)}>Deactivate</button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
-
-            <div className="modal-foot">
-              <button className="btn ghost" onClick={closeEdit}>Cancel</button>
-              <button className="btn primary" onClick={saveEdit}>Save changes</button>
-            </div>
-          </div>
+          ))}
         </div>
       )}
+
+      <RuleEditor
+        open={editorOpen}
+        onClose={() => setEditorOpen(false)}
+        onDone={refresh}
+        scope={tab}
+        funders={funders}
+        agents={agents}
+        editing={editing}
+      />
     </div>
   )
 }

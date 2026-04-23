@@ -1,167 +1,130 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { clients, deals, contacts } from '@/lib/data'
-import { StatusPill, Pill } from '@/components/ui/pill'
+import { api, dealStatusLabel, type DbAccount, type DbContact, type DbDeal } from '@/lib/api'
+import { StatusPill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
+import { ContactEditor } from '@/components/contacts/contact-editor'
+import { ClientEditor } from '@/components/clients/client-editor'
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-const ratingTone = (r: string) =>
-  r.startsWith('A') ? 'pos' : r.startsWith('B') ? 'warn' : 'neg'
+type AccountFull = DbAccount & { contacts?: DbContact[]; deals?: DbDeal[] }
 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
 
-// ── Actions menu ───────────────────────────────────────────────────────────
-function ActionsMenu({ clientId, companyName }: { clientId: string; companyName: string }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-
-  const copyLink = () => {
-    navigator.clipboard.writeText(window.location.href)
-    setOpen(false)
-  }
-
-  const exportCSV = () => {
-    const client = clients.find(c => c.id === clientId)
-    if (!client) return
-    const row = [client.id, `"${client.company}"`, client.sector, client.rating, client.exposure, client.openDeals].join(',')
-    const blob = new Blob([`ID,Company,Sector,Rating,Exposure,Open Deals\n${row}`], { type: 'text/csv' })
-    Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(blob),
-      download: `${clientId}.csv`,
-    }).click()
-    setOpen(false)
-  }
-
-  type MenuItem = null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void }
-  const items: MenuItem[] = [
-    { label: 'Copy link',  icon: Icons.Link,     action: copyLink },
-    { label: 'Print',      icon: Icons.Print,    action: () => { window.print(); setOpen(false) } },
-    { label: 'Export CSV', icon: Icons.Download, action: exportCSV },
-  ]
-
-  return (
-    <div className="record-menu-wrap" ref={ref}>
-      <button className="btn sm" onClick={() => setOpen(v => !v)}>
-        Actions <Icons.ChevronDown style={{ width: 11, height: 11 }} />
-      </button>
-      {open && (
-        <div className="record-menu">
-          {items.map((item, i) =>
-            item === null
-              ? <div key={i} className="record-menu-divider" />
-              : (
-                <button key={item.label} onClick={item.action} className="record-menu-item">
-                  <item.icon />{item.label}
-                </button>
-              )
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Page ───────────────────────────────────────────────────────────────────
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
 
-  const client = clients.find(c => c.id === id)
+  const [account, setAccount] = useState<AccountFull | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [contactModal, setContactModal] = useState<{ editing?: DbContact } | null>(null)
+  const [editAccountOpen, setEditAccountOpen] = useState(false)
 
-  if (!client) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
-      <p style={{ color: 'var(--ink-4)' }}>Client not found.</p>
-      <Link href="/clients" className="btn sm" style={{ marginTop: 12, display: 'inline-flex' }}>
-        ← Back to clients
-      </Link>
+  const refresh = useCallback(async () => {
+    const res = await api.accounts.get(id)
+    if (res.error) { setError(res.error.message); setLoading(false); return }
+    setAccount(res.data)
+    setLoading(false)
+  }, [id])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  const removeContact = async (cid: string) => {
+    if (!confirm('Remove this contact?')) return
+    const res = await api.accounts.contacts.delete(id, cid)
+    if (res.error) { alert(res.error.message); return }
+    refresh()
+  }
+
+  if (loading) return (
+    <div className="page" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>
+      Loading client…
     </div>
   )
 
-  const clientDeals    = deals.filter(d => d.clientId === client.id)
-  const clientContacts = contacts.filter(c => c.clientId === client.id)
-  const hue            = hueFromId(client.id)
+  if (error || !account) return (
+    <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
+      <p style={{ color: 'var(--ink-4)' }}>{error ?? 'Client not found.'}</p>
+      <Link href="/clients" className="btn sm" style={{ marginTop: 12, display: 'inline-flex' }}>Back to clients</Link>
+    </div>
+  )
+
+  const dealsList = account.deals ?? []
+  const contactsList = account.contacts ?? []
+  const totalExposure = dealsList.reduce((s, d) => s + Number(d.transferred_amount ?? 0), 0)
+  const activeDeals = dealsList.filter(d => d.status === 'FUNDS_TRANSFERRED' || d.status === 'APPROVED').length
+  const hue = hueFromId(account.id)
 
   return (
     <div className="page" style={{ padding: '20px 28px 80px' }}>
-
-      {/* Breadcrumb */}
       <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Link href="/clients" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>Clients</Link>
         <span>/</span>
-        <span style={{ color: 'var(--ink-1)' }}>{client.id}</span>
+        <span className="mono" style={{ color: 'var(--ink-1)' }}>{account.id.slice(0, 8)}</span>
       </div>
 
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1 }}>
           <div style={{
             width: 48, height: 48, borderRadius: 12,
             background: `oklch(0.65 0.18 ${hue})`,
-            flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff',
+            flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
           }}>
             <Icons.Building style={{ width: 22, height: 22 }} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <h1 style={{ margin: 0 }}>{client.company}</h1>
-              <span className="chip">{client.sector}</span>
-            </div>
+            <h1 style={{ margin: 0, marginBottom: 4 }}>{account.name}</h1>
             <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>
-              <span className="mono" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{client.id}</span>
+              <span className="mono" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{account.id.slice(0, 8)}</span>
+              <span style={{ marginLeft: 12 }}>Member since {fmt.dateShort(account.created_at)}</span>
             </div>
           </div>
         </div>
         <div className="actions">
-          <ActionsMenu clientId={client.id} companyName={client.company} />
+          <button className="btn sm" onClick={() => setEditAccountOpen(true)}>
+            <Icons.Edit style={{ width: 13, height: 13 }} /> Edit
+          </button>
           <button className="close-btn" onClick={() => router.back()}>
             <Icons.X /> Close
           </button>
         </div>
       </div>
 
-      {/* KPI grid */}
       <div className="kpi-grid" style={{ marginBottom: 24 }}>
-        {[
-          { label: 'Total exposure',  val: fmt.money(client.exposure),      sub: 'funded capital' },
-          { label: 'Open deals',      val: String(client.openDeals),         sub: `${clientDeals.length} total` },
-          { label: 'Credit rating',   val: client.rating,                    sub: ratingTone(client.rating) === 'pos' ? 'Investment grade' : ratingTone(client.rating) === 'warn' ? 'Acceptable risk' : 'Monitor closely' },
-          { label: 'Client since',    val: fmt.dateShort(client.since),      sub: 'member since' },
-        ].map((k, i) => (
-          <div key={i} className="kpi" style={{ cursor: 'default' }}>
-            <div className="kpi-label">{k.label}</div>
-            <div className="kpi-val">{k.val}</div>
-            <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>{k.sub}</div>
-          </div>
-        ))}
+        <div className="kpi" style={{ cursor: 'default' }}>
+          <div className="kpi-label">Total exposure</div>
+          <div className="kpi-val">{fmt.money(totalExposure)}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>across {dealsList.length} deal{dealsList.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div className="kpi" style={{ cursor: 'default' }}>
+          <div className="kpi-label">Active deals</div>
+          <div className="kpi-val">{activeDeals}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>approved or funded</div>
+        </div>
+        <div className="kpi" style={{ cursor: 'default' }}>
+          <div className="kpi-label">Contacts</div>
+          <div className="kpi-val">{contactsList.length}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>on file</div>
+        </div>
+        <div className="kpi" style={{ cursor: 'default' }}>
+          <div className="kpi-label">Member since</div>
+          <div className="kpi-val" style={{ fontSize: 18 }}>{fmt.dateShort(account.created_at)}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>onboarded</div>
+        </div>
       </div>
 
-      {/* 2-col: Deals table + Contacts list */}
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, marginBottom: 16 }}>
-
-        {/* Deals table */}
+        {/* Deals */}
         <div className="card">
           <div className="card-head">
-            <h3>Deals <span className="badge" style={{ marginLeft: 4 }}>{clientDeals.length}</span></h3>
-            <Link href="/deals" className="btn sm ghost" style={{ fontSize: 11 }}>
-              View all <Icons.Chevron />
-            </Link>
+            <h3>Deals <span className="badge" style={{ marginLeft: 4 }}>{dealsList.length}</span></h3>
+            <Link href="/deals" className="btn sm ghost" style={{ fontSize: 11 }}>View all <Icons.Chevron /></Link>
           </div>
-          {clientDeals.length === 0 ? (
+          {dealsList.length === 0 ? (
             <div className="card-body" style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>
               No deals for this client.
             </div>
@@ -171,28 +134,20 @@ export default function ClientDetailPage() {
                 <thead>
                   <tr>
                     <th>ID</th>
-                    <th>Product</th>
-                    <th className="num">Amount</th>
                     <th>Funder</th>
+                    <th className="num">Transferred</th>
+                    <th className="num">Payback</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {clientDeals.map(d => (
-                    <tr
-                      key={d.id}
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => router.push(`/deals/${d.id}`)}
-                    >
-                      <td>
-                        <span className="mono" style={{ color: 'var(--accent-ink)', fontWeight: 600, fontSize: 12 }}>
-                          {d.id}
-                        </span>
-                      </td>
-                      <td><span className="chip">{d.productType}</span></td>
-                      <td className="num strong">{fmt.money(d.amount)}</td>
-                      <td className="muted" style={{ fontSize: 12 }}>{d.funder}</td>
-                      <td><StatusPill status={d.status} /></td>
+                  {dealsList.map(d => (
+                    <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${d.id}`)}>
+                      <td><span className="mono" style={{ color: 'var(--accent-ink)', fontWeight: 600, fontSize: 12 }}>{d.id.slice(0, 8)}</span></td>
+                      <td className="muted" style={{ fontSize: 12 }}>{d.funders?.name ?? '—'}</td>
+                      <td className="num strong">{d.transferred_amount ? fmt.money(Number(d.transferred_amount)) : '—'}</td>
+                      <td className="num">{d.payback_amount ? fmt.money(Number(d.payback_amount)) : '—'}</td>
+                      <td><StatusPill status={dealStatusLabel(d.status)} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -201,44 +156,41 @@ export default function ClientDetailPage() {
           )}
         </div>
 
-        {/* Contacts list */}
+        {/* Contacts */}
         <div className="card">
           <div className="card-head">
-            <h3>Contacts <span className="badge" style={{ marginLeft: 4 }}>{clientContacts.length}</span></h3>
-            <Link href="/contacts" className="btn sm ghost" style={{ fontSize: 11 }}>
-              View all <Icons.Chevron />
-            </Link>
+            <h3>Contacts <span className="badge" style={{ marginLeft: 4 }}>{contactsList.length}</span></h3>
+            <button className="btn sm primary" onClick={() => setContactModal({})}>
+              <Icons.Plus /> Add
+            </button>
           </div>
-          {clientContacts.length === 0 ? (
+          {contactsList.length === 0 ? (
             <div className="card-body" style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>
               No contacts on file.
             </div>
           ) : (
             <div className="card-body flush">
-              {clientContacts.map((c, i) => (
-                <div
-                  key={c.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '12px 18px',
-                    borderBottom: i < clientContacts.length - 1 ? '1px solid var(--line)' : 'none',
-                  }}
-                >
-                  <Avatar
-                    name={c.name}
-                    hue={(c.id.charCodeAt(c.id.length - 1) * 47) % 360}
-                    size="md"
-                  />
+              {contactsList.map((c, i) => (
+                <div key={c.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 18px',
+                  borderBottom: i < contactsList.length - 1 ? '1px solid var(--line)' : 'none',
+                }}>
+                  <Avatar name={c.name} hue={(c.id.charCodeAt(c.id.length - 1) * 47) % 360} size="md" />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: 13, lineHeight: 1.3 }}>{c.name}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>{c.role}</div>
-                    <a
-                      href={`mailto:${c.email}`}
-                      style={{ fontSize: 11.5, color: 'var(--accent-ink)', textDecoration: 'none', display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {c.email}
-                    </a>
+                    <div style={{ fontWeight: 500, fontSize: 13 }}>{c.name}</div>
+                    {c.email && (
+                      <a href={`mailto:${c.email}`} style={{ fontSize: 11.5, color: 'var(--accent-ink)', textDecoration: 'none', display: 'block', marginTop: 2 }}>
+                        {c.email}
+                      </a>
+                    )}
+                    {c.phone && (
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{c.phone}</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn sm ghost" onClick={() => setContactModal({ editing: c })} aria-label="Edit"><Icons.Edit style={{ width: 13, height: 13 }} /></button>
+                    <button className="btn sm ghost" onClick={() => removeContact(c.id)} aria-label="Delete"><Icons.Trash style={{ width: 13, height: 13 }} /></button>
                   </div>
                 </div>
               ))}
@@ -247,76 +199,31 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      {/* Profile card — full width */}
-      <div className="card">
-        <div className="card-head"><h3>Profile</h3></div>
-        <div className="card-body" style={{ padding: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
-            {[
-              { label: 'Client ID',   value: client.id,                       mono: true,  accent: true },
-              { label: 'Sector',      value: client.sector,                    chip: true },
-              { label: 'Rating',      value: client.rating,                    pill: true  },
-              { label: 'Member since',value: fmt.dateShort(client.since) },
-              { label: 'Open deals',  value: String(client.openDeals) },
-              { label: 'Exposure',    value: fmt.money(client.exposure),       bold: true  },
-            ].map((f, i, arr) => {
-              const isLast = i === arr.length - 1
-              return (
-                <div key={f.label} style={{ display: 'contents' }}>
-                  <div style={{
-                    fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 500,
-                    padding: '12px 0 12px 20px',
-                    borderBottom: isLast ? 'none' : '1px solid var(--line)',
-                  }}>
-                    {f.label}
-                  </div>
-                  <div style={{
-                    fontSize: 13, padding: '12px 20px 12px 0',
-                    borderBottom: isLast ? 'none' : '1px solid var(--line)',
-                    fontFamily: f.mono ? 'var(--font-mono)' : undefined,
-                    color: f.accent ? 'var(--accent-ink)' : undefined,
-                    fontWeight: f.bold ? 600 : 500,
-                    display: 'flex', alignItems: 'center',
-                  }}>
-                    {f.chip ? (
-                      <span className="chip">{f.value}</span>
-                    ) : f.pill ? (
-                      <Pill tone={ratingTone(f.value)}>{f.value}</Pill>
-                    ) : (
-                      f.value
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+      {account.notes && (
+        <div className="card">
+          <div className="card-head"><h3>Notes</h3></div>
+          <div className="card-body">
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{account.notes}</p>
           </div>
         </div>
-        {/* Audit footer — Client type doesn't have audit fields in data.ts,
-            so we guard with a conditional that will activate once backend is wired */}
-        {(client as any).createdAt && (
-          <div className="audit-foot">
-            <div className="audit-col">
-              <span className="audit-lbl">Created</span>
-              <span className="audit-val">{fmt.dateTime((client as any).createdAt ?? '')}</span>
-              <span className="audit-by">by <strong>{(client as any).createdBy}</strong></span>
-            </div>
-            <div className="audit-sep" />
-            <div className="audit-col">
-              <span className="audit-lbl">Last modified</span>
-              <span className="audit-val">
-                {fmt.dateTime((client as any).updatedAt ?? '')}
-                {fmt.relTime((client as any).updatedAt ?? '') ? (
-                  <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-sans)' }}>
-                    {' '}· {fmt.relTime((client as any).updatedAt ?? '')}
-                  </span>
-                ) : null}
-              </span>
-              <span className="audit-by">by <strong>{(client as any).updatedBy}</strong></span>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
+      {contactModal && (
+        <ContactEditor
+          open
+          onClose={() => setContactModal(null)}
+          onDone={refresh}
+          accountId={account.id}
+          editing={contactModal.editing}
+        />
+      )}
+
+      <ClientEditor
+        open={editAccountOpen}
+        onClose={() => setEditAccountOpen(false)}
+        onDone={refresh}
+        editing={account}
+      />
     </div>
   )
 }

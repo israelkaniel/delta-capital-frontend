@@ -11,6 +11,7 @@ import { AreaChart } from '@/components/ui/charts'
 import { fmt } from '@/lib/fmt'
 import { agentById, dealById, funderById, deals, commissions, contacts, monthly, notifications, tasks, agents, clients, funders } from '@/lib/data'
 import type { Deal, Commission, Agent, Client, Funder } from '@/lib/data'
+import { NewDealModal } from '@/components/deals/new-deal-modal'
 
 // ─── Shared: Record Actions Dropdown ──────────────────────────────────────────
 function DrawerMoreMenu({ items }: { items: Array<null | { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; action: () => void; danger?: boolean }> }) {
@@ -1224,13 +1225,7 @@ function NewDealWizard({ onCreated }: { onCreated: (dealId: string) => void }) {
 
 // ─── Main export: all overlays ─────────────────────────────────────────────────
 export function ShellOverlays() {
-  const { drawer, closeDrawer, cmdOpen, setCmdOpen } = useShell()
-  const [toast, setToast] = useState({ visible: false, dealId: '' })
-
-  const handleDealCreated = (dealId: string) => {
-    setToast({ visible: true, dealId })
-    setTimeout(() => setToast({ visible: false, dealId: '' }), 2200)
-  }
+  const { drawer, closeDrawer, cmdOpen, setCmdOpen, newDealOpen, setNewDealOpen } = useShell()
 
   return (
     <>
@@ -1242,9 +1237,8 @@ export function ShellOverlays() {
         {drawer.kind === 'funder'     && <FunderDetail funder={drawer.entity as Funder} />}
       </Drawer>
       <NotificationsPanel />
-      <NewDealWizard onCreated={handleDealCreated} />
+      <NewDealModal open={newDealOpen} onClose={() => setNewDealOpen(false)} />
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
-      <DealCreatedToast show={toast.visible} dealId={toast.dealId} />
     </>
   )
 }

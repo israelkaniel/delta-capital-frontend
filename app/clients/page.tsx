@@ -6,6 +6,7 @@ import { fmt } from '@/lib/fmt'
 import { api, type DbAccount } from '@/lib/api'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
+import { ClientEditor } from '@/components/clients/client-editor'
 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
 
@@ -14,13 +15,17 @@ export default function ClientsPage() {
   const [accounts, setAccounts] = useState<(DbAccount & { contacts?: any[]; deals?: any[] })[]>([])
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
+  const [editorOpen, setEditorOpen] = useState(false)
 
-  useEffect(() => {
+  const refresh = () => {
+    setLoading(true)
     api.accounts.list().then(res => {
       setAccounts(res.data ?? [])
       setLoading(false)
     })
-  }, [])
+  }
+
+  useEffect(() => { refresh() }, [])
 
   const filtered = useMemo(() =>
     accounts.filter(a => {
@@ -38,8 +43,7 @@ export default function ClientsPage() {
           <p>{loading ? 'Loading…' : `${accounts.length} accounts`}</p>
         </div>
         <div className="actions">
-          <button className="btn"><Icons.Download /> Export</button>
-          <button className="btn primary"><Icons.Plus /> Add client</button>
+          <button className="btn primary" onClick={() => setEditorOpen(true)}><Icons.Plus /> Add client</button>
         </div>
       </div>
 
@@ -85,6 +89,8 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
+
+      <ClientEditor open={editorOpen} onClose={() => setEditorOpen(false)} onDone={refresh} />
     </div>
   )
 }
