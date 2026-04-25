@@ -17,9 +17,19 @@ export function AreaChart({
   const pad = { l: 44, r: 12, t: 12, b: 26 }
   const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b
 
-  const vals = data.map(d => d[yKey] as number)
-  const yMax = Math.max(...vals) * 1.12
-  const x = (i: number) => pad.l + (i / (data.length - 1)) * iw
+  if (data.length === 0) {
+    return (
+      <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-4)', fontSize: 12 }}>
+        No data
+      </div>
+    )
+  }
+
+  const vals = data.map(d => Number(d[yKey]) || 0)
+  const rawMax = Math.max(...vals)
+  const yMax = rawMax > 0 ? rawMax * 1.12 : 1
+  const denom = data.length > 1 ? data.length - 1 : 1
+  const x = (i: number) => pad.l + (i / denom) * iw
   const y = (v: number) => pad.t + ih - (v / yMax) * ih
 
   const linePath = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(d[yKey] as number)}`).join(' ')
@@ -91,7 +101,18 @@ export function BarChart({
   const W = 600, H = height
   const pad = { l: 44, r: 12, t: 12, b: 26 }
   const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b
-  const yMax = Math.max(...data.flatMap(d => series.map(s => d[s] as number))) * 1.15
+
+  if (data.length === 0) {
+    return (
+      <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-4)', fontSize: 12 }}>
+        No data
+      </div>
+    )
+  }
+
+  const allVals = data.flatMap(d => series.map(s => Number(d[s]) || 0))
+  const rawMax = Math.max(...allVals)
+  const yMax = rawMax > 0 ? rawMax * 1.15 : 1
   const groupW = iw / data.length
   const barW = Math.min(24, (groupW - 10) / series.length)
   const y = (v: number) => pad.t + ih - (v / yMax) * ih
@@ -142,6 +163,18 @@ export function Donut({
   const r = size / 2
   const innerR = r * innerRatio
   const total = segments.reduce((a, s) => a + s.value, 0)
+  if (total <= 0 || segments.length === 0) {
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={r} cy={r} r={r - 1} fill="none" stroke="var(--line)" strokeWidth="2" />
+        {center && (
+          <foreignObject x={innerR * 0.2} y={r - 22} width={size - innerR * 0.4} height={44}>
+            <div style={{ textAlign: 'center', color: 'var(--ink-4)' }}>{center}</div>
+          </foreignObject>
+        )}
+      </svg>
+    )
+  }
   let acc = 0
   const arcs = segments.map(s => {
     const start = (acc / total) * Math.PI * 2
@@ -171,12 +204,17 @@ export function Donut({
 export function Sparkline({
   data, width = 80, height = 28, color = 'var(--accent)',
 }: { data: number[]; width?: number; height?: number; color?: string }) {
-  const yMax = Math.max(...data) * 1.05
-  const yMin = Math.min(...data) * 0.95
-  const x = (i: number) => (i / (data.length - 1)) * width
-  const y = (v: number) => height - ((v - yMin) / (yMax - yMin)) * height
-  const path = data.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(v)}`).join(' ')
-  const area = `${path} L ${x(data.length - 1)} ${height} L ${x(0)} ${height} Z`
+  if (data.length === 0) return <svg width={width} height={height} />
+  const cleaned = data.map(v => Number(v) || 0)
+  const rawMax = Math.max(...cleaned), rawMin = Math.min(...cleaned)
+  const yMax = rawMax > 0 ? rawMax * 1.05 : 1
+  const yMin = rawMin < rawMax ? rawMin * 0.95 : 0
+  const range = yMax - yMin || 1
+  const denom = cleaned.length > 1 ? cleaned.length - 1 : 1
+  const x = (i: number) => (i / denom) * width
+  const y = (v: number) => height - ((v - yMin) / range) * height
+  const path = cleaned.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(v)}`).join(' ')
+  const area = `${path} L ${x(cleaned.length - 1)} ${height} L ${x(0)} ${height} Z`
   const gid = 'sp' + Math.random().toString(36).slice(2, 7)
 
   return (
