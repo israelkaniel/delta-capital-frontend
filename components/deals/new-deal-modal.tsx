@@ -77,8 +77,14 @@ export function NewDealModal({ open, onClose }: { open: boolean; onClose: () => 
 
       const res = await api.deals.create(body)
       if (res.error) throw res.error
+      const newId = (res.data as { id?: string } | null)?.id
+      if (!newId) {
+        console.error('Deal created but response missing id:', res.data)
+        throw new Error('Deal created but server returned no id — refresh the deals list')
+      }
       onClose()
-      router.push(`/deals/${res.data!.id}`)
+      router.push(`/deals/${newId}`)
+      router.refresh()
     } catch (e: any) {
       setError(e?.message ?? 'Failed to create deal')
     } finally {

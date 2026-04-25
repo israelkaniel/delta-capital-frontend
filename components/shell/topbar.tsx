@@ -2,7 +2,6 @@
 import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { Icons } from '@/lib/icons'
-import { notifications } from '@/lib/data'
 import { useShell } from './shell-provider'
 
 const crumbs: Record<string, string[]> = {
@@ -23,7 +22,6 @@ export function Topbar() {
   const pathname = usePathname()
   const { toggleTheme, tweaks, setNotifOpen, notifOpen, setNewDealOpen, cmdOpen, setCmdOpen } = useShell()
   const breadcrumbs = crumbs[pathname] ?? ['Workspace']
-  const unread = notifications.filter(n => n.unread).length
 
   // Global ⌘K / Ctrl+K listener
   useEffect(() => {
@@ -68,11 +66,6 @@ export function Topbar() {
       </button>
 
       <div className="tb-divider" />
-
-      <button className="tb-icon-btn" onClick={() => setNotifOpen(!notifOpen)} title="Notifications">
-        <Icons.Bell />
-        {unread > 0 && <span className="dot" />}
-      </button>
 
       <button className="tb-icon-btn" onClick={toggleTheme} title="Toggle theme">
         {tweaks.theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}
