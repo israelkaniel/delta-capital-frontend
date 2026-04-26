@@ -43,6 +43,7 @@ const groups: NavGroup[] = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const isAuthPage = pathname === '/login'
   const [counts, setCounts] = useState<Counts | null>(null)
   const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null)
 
@@ -66,10 +67,14 @@ export function Sidebar() {
     })
   }, [])
 
-  useEffect(() => { refresh() }, [refresh, pathname])
+  useEffect(() => {
+    if (isAuthPage) return
+    refresh()
+  }, [refresh, pathname, isAuthPage])
 
   // Load logged-in user info from Supabase session
   useEffect(() => {
+    if (isAuthPage) return
     let cancelled = false
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user: authUser } }) => {
@@ -82,7 +87,9 @@ export function Sidebar() {
       })
     })
     return () => { cancelled = true }
-  }, [])
+  }, [isAuthPage])
+
+  if (isAuthPage) return null
 
   const initials = (user?.name ?? '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
 

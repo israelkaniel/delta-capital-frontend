@@ -17,7 +17,9 @@ export async function invokeFunction<T = unknown>(
   const { data: { session } } = await supabase.auth.getSession()
 
   if (!session) {
-    if (typeof window !== 'undefined') window.location.href = '/login'
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
     return { data: null, error: new Error('Not authenticated') }
   }
 

@@ -20,8 +20,9 @@ const crumbs: Record<string, string[]> = {
 
 export function Topbar() {
   const pathname = usePathname()
-  const { toggleTheme, tweaks, setNotifOpen, notifOpen, setNewDealOpen, cmdOpen, setCmdOpen } = useShell()
+  const { toggleTheme, tweaks, setNewDealOpen, cmdOpen, setCmdOpen } = useShell()
   const breadcrumbs = crumbs[pathname] ?? ['Workspace']
+  const isAuthPage = pathname === '/login'
 
   // Global ⌘K / Ctrl+K listener
   useEffect(() => {
@@ -34,6 +35,8 @@ export function Topbar() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [cmdOpen, setCmdOpen])
+
+  if (isAuthPage) return null
 
   return (
     <header className="topbar">
