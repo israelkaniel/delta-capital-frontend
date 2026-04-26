@@ -1,6 +1,7 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQueryClient, useMutation } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
@@ -8,7 +9,7 @@ import {
   api, dealStatusLabel, commStatusLabel,
   type DbDeal, type DbCommission, type DbDealNote, type DbAuditLog,
 } from '@/lib/api'
-import { dbDeals, dbNotes } from '@/lib/db'
+import { useDeal, useDealNotes, useDealTimeline, invalidate, qk } from '@/lib/queries'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { useToast } from '@/components/ui/toast/toast'
@@ -60,61 +61,50 @@ export default function DealDetailPage() {
   const router = useRouter()
   const toast = useToast()
   const role = useUserRole()
+  const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('Overview')
 
-  const [deal, setDeal] = useState<DealFull | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const dealQ     = useDeal(id)
+  const notesQ    = useDealNotes(id, tab === 'Notes')
+  const timelineQ = useDealTimeline(id, tab === 'Timeline')
+
+  const deal     = (dealQ.data as DealFull | null | undefined) ?? null
+  const loading  = dealQ.isLoading
+  const error    = dealQ.error?.message ?? null
+  const notes    = notesQ.data ?? []
+  const timeline = timelineQ.data ?? null
+  const timelineLoading = timelineQ.isLoading
+
+  const refresh = () => invalidate.deal(qc, id)
+  const refreshNotes = () => qc.invalidateQueries({ queryKey: qk.deals.notes(id) })
+
   const [statusOpen, setStatusOpen] = useState(false)
   const [editOpen, setEditOpen]     = useState(false)
   const [agentsOpen, setAgentsOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-
-  const [notes, setNotes]     = useState<DbDealNote[]>([])
   const [noteDraft, setNoteDraft] = useState('')
-  const [noteSaving, setNoteSaving] = useState(false)
 
-  const [timeline, setTimeline] = useState<{ audits: DbAuditLog[]; notes: DbDealNote[] } | null>(null)
-  const [timelineLoading, setTimelineLoading] = useState(false)
-
-  const refresh = useCallback(async () => {
-    const res = await dbDeals.get(id)
-    if (res.error) { setError(res.error.message); setLoading(false); return }
-    setDeal(res.data as DealFull)
-    setLoading(false)
-  }, [id])
-
-  const refreshNotes = useCallback(async () => {
-    const res = await dbNotes.list(id)
-    setNotes(res.data ?? [])
-  }, [id])
-
-  const refreshTimeline = useCallback(async () => {
-    setTimelineLoading(true)
-    const res = await api.deals.timeline(id)
-    setTimeline(res.data ?? { audits: [], notes: [] })
-    setTimelineLoading(false)
-  }, [id])
-
-  useEffect(() => { refresh() }, [refresh])
-  useEffect(() => { if (tab === 'Notes')    refreshNotes() }, [tab, refreshNotes])
-  useEffect(() => { if (tab === 'Timeline') refreshTimeline() }, [tab, refreshTimeline])
+  const noteMutation = useMutation({
+    mutationFn: (body: string) => api.deals.notes.create(id, body).then(r => { if (r.error) throw r.error; return r.data }),
+    onSuccess: () => {
+      setNoteDraft('')
+      toast.success('Note added')
+      qc.invalidateQueries({ queryKey: qk.deals.notes(id) })
+      qc.invalidateQueries({ queryKey: qk.deals.timeline(id) })
+    },
+    onError: (e: Error) => toast.error('Note failed', e.message),
+  })
+  const noteSaving = noteMutation.isPending
 
   const totalCommissions = useMemo(
     () => (deal?.commissions ?? []).reduce((s, c) => s + Number(c.total_amount), 0),
     [deal],
   )
 
-  const addNote = async () => {
+  const addNote = () => {
     const body = noteDraft.trim()
     if (!body) return
-    setNoteSaving(true)
-    const res = await api.deals.notes.create(id, body)
-    setNoteSaving(false)
-    if (res.error) { toast.error('Note failed', res.error.message); return }
-    setNoteDraft('')
-    toast.success('Note added')
-    refreshNotes()
+    noteMutation.mutate(body)
   }
 
   const removeNote = async (noteId: string) => {
@@ -129,6 +119,7 @@ export default function DealDetailPage() {
     const res = await api.deals.delete(id)
     if (res.error) { toast.error('Delete failed', res.error.message); return }
     toast.success('Deal deleted')
+    invalidate.deals(qc)
     router.push('/deals')
   }
 

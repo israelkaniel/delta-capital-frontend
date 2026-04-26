@@ -1,11 +1,12 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, type DbAccount, type DbContact, type DbDeal } from '@/lib/api'
-import { dbAccounts } from '@/lib/db'
+import { useAccount, invalidate } from '@/lib/queries'
 import { StatusPill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { ContactEditor } from '@/components/contacts/contact-editor'
@@ -20,22 +21,17 @@ const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const qc = useQueryClient()
 
-  const [account, setAccount] = useState<AccountFull | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const accountQ = useAccount(id)
+  const account  = (accountQ.data as AccountFull | null | undefined) ?? null
+  const loading  = accountQ.isLoading
+  const error    = accountQ.error?.message ?? null
+  const refresh  = () => { qc.invalidateQueries({ queryKey: ['accounts', 'detail', id] }) }
+
   const [contactModal, setContactModal] = useState<{ editing?: DbContact } | null>(null)
   const [editAccountOpen, setEditAccountOpen] = useState(false)
   const [newDealOpen, setNewDealOpen] = useState(false)
-
-  const refresh = useCallback(async () => {
-    const res = await dbAccounts.get(id)
-    if (res.error) { setError(res.error.message); setLoading(false); return }
-    setAccount(res.data)
-    setLoading(false)
-  }, [id])
-
-  useEffect(() => { refresh() }, [refresh])
 
   const removeContact = async (cid: string) => {
     if (!confirm('Remove this contact?')) return

@@ -1,11 +1,11 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, commStatusLabel, commStatusTone, type DbCommission } from '@/lib/api'
-import { dbCommissions } from '@/lib/db'
-import { getAgents } from '@/lib/lookups'
+import { commStatusLabel, commStatusTone, type DbCommission } from '@/lib/api'
+import { useCommissionsList, useAgentsList, prefetch } from '@/lib/queries'
 import { StatusPill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -20,22 +20,21 @@ function commAgent(c: DbCommission) { return c.deal_agents?.agents }
 
 export default function CommissionsPage() {
   const router = useRouter()
+  const qc = useQueryClient()
   const { openCommission } = useShell()
 
-  const [commissions, setCommissions] = useState<DbCommission[]>([])
-  const [agentNameMap, setAgentNameMap] = useState<Map<string, string>>(new Map())
-  const [loading, setLoading] = useState(true)
+  const commsQ  = useCommissionsList()
+  const agentsQ = useAgentsList()
+  const commissions = commsQ.data ?? []
+  const agentNameMap = useMemo(
+    () => new Map((agentsQ.data ?? []).map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])),
+    [agentsQ.data],
+  )
+  const loading = commsQ.isLoading
+
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState('All')
   const [agentFilter, setAgentFilter] = useState('')
-
-  useEffect(() => {
-    Promise.all([dbCommissions.list(), getAgents()]).then(([res, agents]) => {
-      setCommissions(res.data ?? [])
-      setAgentNameMap(new Map(agents.map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])))
-      setLoading(false)
-    })
-  }, [])
 
   const allAgentNames = useMemo(() =>
     Array.from(new Set(commissions
@@ -102,7 +101,7 @@ export default function CommissionsPage() {
                   const agent = commAgent(c)
                   const agentName = agentNameMap.get(c.deal_agents?.agent_id ?? '') ?? agent?.code ?? '—'
                   return (
-                    <tr key={c.id} onClick={() => router.push(`/commissions/${c.id}`)} style={{ cursor: 'pointer' }}>
+                    <tr key={c.id} onClick={() => router.push(`/commissions/${c.id}`)} onMouseEnter={() => prefetch.commission(qc, c.id)} style={{ cursor: 'pointer' }}>
                       <td><span className="mono text-xs" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{c.id.slice(0, 8)}</span></td>
                       <td><span className="strong">{commClient(c)}</span></td>
                       <td>

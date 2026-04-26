@@ -1,10 +1,10 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, type DbFunder } from '@/lib/api'
-import { dbFunders } from '@/lib/db'
+import { useFundersList, invalidate, prefetch } from '@/lib/queries'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -13,21 +13,15 @@ import { FunderEditor } from '@/components/funders/funder-editor'
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
 
 export default function FundersPage() {
-  const router   = useRouter()
-  const [funders, setFunders] = useState<DbFunder[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch]   = useState('')
+  const router = useRouter()
+  const qc = useQueryClient()
+  const fundersQ = useFundersList()
+  const funders  = fundersQ.data ?? []
+  const loading  = fundersQ.isLoading
+  const refresh  = () => invalidate.funders(qc)
+
+  const [search, setSearch] = useState('')
   const [editorOpen, setEditorOpen] = useState(false)
-
-  const refresh = () => {
-    setLoading(true)
-    dbFunders.list().then(res => {
-      setFunders(res.data ?? [])
-      setLoading(false)
-    })
-  }
-
-  useEffect(() => { refresh() }, [])
 
   const filtered = useMemo(() =>
     funders.filter(f => {
@@ -65,7 +59,7 @@ export default function FundersPage() {
               </thead>
               <tbody>
                 {filtered.map(f => (
-                  <tr key={f.id} onClick={() => router.push(`/funders/${f.id}`)} style={{ cursor: 'pointer' }}>
+                  <tr key={f.id} onClick={() => router.push(`/funders/${f.id}`)} onMouseEnter={() => prefetch.funder(qc, f.id)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={f.name} size="sm" hue={hueFromId(f.id)} />

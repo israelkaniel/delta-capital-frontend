@@ -1,12 +1,13 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { Pill } from '@/components/ui/pill'
-import { api, type DbFunder, type DbGlobalRule } from '@/lib/api'
-import { dbFunders, dbRules } from '@/lib/db'
+import { type DbFunder, type DbGlobalRule } from '@/lib/api'
+import { useFunder, useGlobalRules, invalidate } from '@/lib/queries'
 import { FunderEditor } from '@/components/funders/funder-editor'
 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
@@ -21,21 +22,15 @@ const isActiveRule = (r: { valid_from: string; valid_to: string | null }) => {
 export default function FunderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const [funder, setFunder] = useState<DbFunder | null>(null)
-  const [rules, setRules]   = useState<DbGlobalRule[]>([])
-  const [loading, setLoading] = useState(true)
+  const qc = useQueryClient()
+  const funderQ = useFunder(id)
+  const rulesQ  = useGlobalRules(id)
+  const funder  = funderQ.data ?? null
+  const rules   = rulesQ.data ?? []
+  const loading = funderQ.isLoading
+  const error   = funderQ.error?.message ?? null
+  const refresh = () => { invalidate.funders(qc); invalidate.rules(qc) }
   const [editorOpen, setEditorOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const refresh = useCallback(async () => {
-    const [f, r] = await Promise.all([dbFunders.get(id), dbRules.globalList({ funder_id: id })])
-    if (f.error) { setError(f.error.message); setLoading(false); return }
-    setFunder(f.data)
-    setRules(r.data ?? [])
-    setLoading(false)
-  }, [id])
-
-  useEffect(() => { refresh() }, [refresh])
 
   if (loading) return (
     <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading funder…</div>

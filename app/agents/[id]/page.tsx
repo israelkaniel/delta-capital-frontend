@@ -1,46 +1,38 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
+import { api, dealStatusLabel, commStatusLabel, type DbAgent } from '@/lib/api'
 import {
-  api, dealStatusLabel, commStatusLabel,
-  type DbAgent, type DbAgentBalances, type DbDeal, type DbCommission,
-} from '@/lib/api'
-import { dbAgents, dbCommissions, dbDeals } from '@/lib/db'
+  useAgent, useAgentLedger, useDealsList, useCommissionsList, invalidate,
+} from '@/lib/queries'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const qc = useQueryClient()
 
-  const [agent, setAgent] = useState<DbAgent | null>(null)
-  const [balances, setBalances] = useState<DbAgentBalances | null>(null)
-  const [deals, setDeals] = useState<DbDeal[]>([])
-  const [commissions, setCommissions] = useState<DbCommission[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const agentQ      = useAgent(id)
+  const ledgerQ     = useAgentLedger(id)
+  const allDealsQ   = useDealsList()
+  const commissionsQ = useCommissionsList({ agent_id: id })
+
+  const agent     = agentQ.data ?? null
+  const balances  = ledgerQ.data?.balances ?? null
+  const deals     = useMemo(
+    () => (allDealsQ.data ?? []).filter(deal => deal.deal_agents?.some(da => da.agent_id === id)),
+    [allDealsQ.data, id],
+  )
+  const commissions = commissionsQ.data ?? []
+  const loading   = agentQ.isLoading || ledgerQ.isLoading
+  const error     = agentQ.error?.message ?? null
+  const refresh   = () => invalidate.agents(qc)
   const [savingActive, setSavingActive] = useState(false)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    const [a, l, d, c] = await Promise.all([
-      dbAgents.get(id),
-      api.agents.ledger(id),
-      dbDeals.list(),
-      dbCommissions.list({ agent_id: id }),
-    ])
-    if (a.error) { setError(a.error.message); setLoading(false); return }
-    setAgent(a.data)
-    setBalances(l.data?.balances ?? null)
-    setDeals((d.data ?? []).filter(deal => deal.deal_agents?.some(da => da.agent_id === id)))
-    setCommissions(c.data ?? [])
-    setLoading(false)
-  }, [id])
-
-  useEffect(() => { refresh() }, [refresh])
 
   const totalVolume = useMemo(
     () => deals.reduce((s, d) => s + Number(d.transferred_amount ?? 0), 0),

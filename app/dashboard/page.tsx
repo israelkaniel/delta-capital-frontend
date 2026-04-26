@@ -1,63 +1,63 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, dealStatusLabel, type DbDeal, type DbCommission, type DbAgentPerformance } from '@/lib/api'
-import { dbCommissions, dbDeals } from '@/lib/db'
+import { dealStatusLabel } from '@/lib/api'
+import {
+  useDealsList, useCommissionsList, useAgentsList,
+  useReportsAgents, useReportsMonthlyBatch, prefetch,
+} from '@/lib/queries'
 import { Avatar } from '@/components/ui/avatar'
 import { StatusPill } from '@/components/ui/pill'
 import { AreaChart, Donut, Sparkline } from '@/components/ui/charts'
 import { AvatarStack } from '@/components/ui/avatar'
 import { useShell } from '@/components/shell/shell-provider'
-import { getAgents } from '@/lib/lookups'
 
 const now = new Date()
+const monthsAsc = Array.from({ length: 6 }, (_, i) => {
+  const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
+  return {
+    key:   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+    label: d.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
+  }
+})
+const monthKeys = monthsAsc.map(m => m.key)
 
 export default function DashboardPage() {
   const [period, setPeriod] = useState('6M')
   const [kpiIdx, setKpiIdx] = useState(0)
+  const qc = useQueryClient()
   const { setNewDealOpen } = useShell()
 
-  const [deals, setDeals]           = useState<DbDeal[]>([])
-  const [commissions, setCommissions] = useState<DbCommission[]>([])
-  const [agentPerf, setAgentPerf]   = useState<DbAgentPerformance[]>([])
-  const [monthlyData, setMonthlyData] = useState<{ x: string; y: number; volume: number }[]>([])
-  const [agentNameMap, setAgentNameMap] = useState<Map<string, string>>(new Map())
-  const [loading, setLoading]       = useState(true)
+  const dealsQ    = useDealsList()
+  const commsQ    = useCommissionsList()
+  const agentsQ   = useAgentsList()
+  const perfQ     = useReportsAgents()
+  const monthlyQ  = useReportsMonthlyBatch(monthKeys)
 
-  useEffect(() => {
-    // Build the 6-month list and ask the batch endpoint for them in one shot
-    const monthsAsc = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
-      return {
-        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-        label: d.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
-      }
-    })
+  const deals       = dealsQ.data   ?? []
+  const commissions = commsQ.data   ?? []
+  const agentPerf   = perfQ.data?.agents ?? []
 
-    Promise.all([
-      dbDeals.list(),
-      dbCommissions.list(),
-      api.reports.agents(),
-      api.reports.monthlyBatch(monthsAsc.map(m => m.key)),
-      getAgents(),
-    ]).then(([dealsRes, commRes, agentRes, batchRes, agents]) => {
-      setDeals(dealsRes.data ?? [])
-      setCommissions(commRes.data ?? [])
-      setAgentPerf(agentRes.data?.agents ?? [])
-      setAgentNameMap(new Map(agents.map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])))
-      const batch = (batchRes.data as Record<string, { summaries?: { total_earned: number }[] }>) ?? {}
-      setMonthlyData(monthsAsc.map(m => ({
-        x: m.label,
-        y: batch[m.key]?.summaries?.reduce((a, s) => a + Number(s.total_earned), 0) ?? 0,
-        volume: (dealsRes.data ?? [])
-          .filter(d => d.funds_transferred_at?.startsWith(m.key))
-          .reduce((a, d) => a + Number(d.transferred_amount ?? 0), 0),
-      })))
-      setLoading(false)
-    })
-  }, [])
+  const agentNameMap = useMemo(
+    () => new Map((agentsQ.data ?? []).map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])),
+    [agentsQ.data],
+  )
+
+  const monthlyData = useMemo(() => {
+    const batch = (monthlyQ.data ?? {}) as Record<string, { summaries?: { total_earned: number }[] }>
+    return monthsAsc.map(m => ({
+      x:      m.label,
+      y:      batch[m.key]?.summaries?.reduce((a, s) => a + Number(s.total_earned), 0) ?? 0,
+      volume: deals
+        .filter(d => d.funds_transferred_at?.startsWith(m.key))
+        .reduce((a, d) => a + Number(d.transferred_amount ?? 0), 0),
+    }))
+  }, [monthlyQ.data, deals])
+
+  const loading = dealsQ.isLoading || commsQ.isLoading || perfQ.isLoading || monthlyQ.isLoading
 
   const fundedDeals  = deals.filter(d => d.status === 'FUNDS_TRANSFERRED')
   const ytdComm      = commissions.reduce((a, c) => a + Number(c.total_amount), 0)

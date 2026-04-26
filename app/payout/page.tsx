@@ -1,9 +1,10 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, type DbAgent, type DbAgentBalances, type DbPayment } from '@/lib/api'
-import { dbAgents, dbPayments } from '@/lib/db'
+import { type DbAgent, type DbAgentBalances } from '@/lib/api'
+import { useAgentsList, usePaymentsList, useAgentsLedgerBatch, invalidate } from '@/lib/queries'
 import { Avatar } from '@/components/ui/avatar'
 import { Pill } from '@/components/ui/pill'
 import { RecordPaymentModal } from '@/components/payout/record-payment-modal'
@@ -14,37 +15,27 @@ type Row = {
 }
 
 export default function PayoutPage() {
-  const [rows, setRows] = useState<Row[]>([])
-  const [payments, setPayments] = useState<DbPayment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+  const agentsQ   = useAgentsList()
+  const paymentsQ = usePaymentsList()
+  const agents = useMemo(() => agentsQ.data ?? [], [agentsQ.data])
+  const payments = paymentsQ.data ?? []
+  const balancesQ = useAgentsLedgerBatch(useMemo(() => agents.map(a => a.id), [agents]))
+
+  const rows: Row[] = useMemo(() => {
+    const balances = balancesQ.data ?? {}
+    return agents.filter(a => balances[a.id]).map(a => ({ agent: a, balances: balances[a.id] }))
+  }, [agents, balancesQ.data])
+
+  const loading = agentsQ.isLoading || balancesQ.isLoading
+  const error = agentsQ.error?.message ?? balancesQ.error?.message ?? null
+  const refresh = () => {
+    invalidate.agents(qc)
+    invalidate.payments(qc)
+    qc.invalidateQueries({ queryKey: ['agents', 'ledger-batch'] })
+  }
+
   const [modal, setModal] = useState<Row | null>(null)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    // Single agents query (cached) + single batched-ledger call replaces the
-    // old N+1 of 1 + N agent.ledger fetches.
-    const [agentsRes, paymentsRes] = await Promise.all([
-      dbAgents.list(),
-      dbPayments.list(),
-    ])
-    if (agentsRes.error) { setError(agentsRes.error.message); setLoading(false); return }
-    const agents = agentsRes.data ?? []
-    setPayments(paymentsRes.data ?? [])
-
-    if (agents.length === 0) { setRows([]); setLoading(false); return }
-
-    const balRes = await api.agents.ledgerBatch(agents.map(a => a.id))
-    const balances = balRes.data?.balances ?? {}
-    setRows(
-      agents
-        .filter(a => balances[a.id])
-        .map(a => ({ agent: a, balances: balances[a.id] })),
-    )
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { refresh() }, [refresh])
 
   const totals = useMemo(() => {
     return rows.reduce((acc, r) => ({

@@ -1,10 +1,10 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, type DbAgent, type DbAgentPerformance } from '@/lib/api'
-import { dbAgents } from '@/lib/db'
+import { useAgentsList, useReportsAgents, invalidate, prefetch } from '@/lib/queries'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -12,23 +12,17 @@ import { AgentEditor } from '@/components/agents/agent-editor'
 
 export default function AgentsPage() {
   const router = useRouter()
-  const [agents, setAgents] = useState<DbAgent[]>([])
-  const [perf, setPerf]     = useState<DbAgentPerformance[]>([])
-  const [loading, setLoading] = useState(true)
+  const qc = useQueryClient()
+  const agentsQ = useAgentsList()
+  const perfQ   = useReportsAgents()
+  const agents  = agentsQ.data ?? []
+  const perf    = perfQ.data?.agents ?? []
+  const loading = agentsQ.isLoading
+  const refresh = () => invalidate.agents(qc)
+
   const [search, setSearch] = useState('')
   const [view, setView]     = useState<'grid' | 'table'>('grid')
   const [editorOpen, setEditorOpen] = useState(false)
-
-  const refresh = () => {
-    setLoading(true)
-    Promise.all([dbAgents.list(), api.reports.agents()]).then(([agentsRes, perfRes]) => {
-      setAgents(agentsRes.data ?? [])
-      setPerf(perfRes.data?.agents ?? [])
-      setLoading(false)
-    })
-  }
-
-  useEffect(() => { refresh() }, [])
 
   const agentStats = useMemo(() =>
     agents.map(a => {
@@ -79,7 +73,7 @@ export default function AgentsPage() {
           {filtered.map(a => (
             <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer', transition: 'box-shadow 0.15s' }}
               onClick={() => router.push(`/agents/${a.id}`)}
-              onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-md)')}
+              onMouseEnter={e => { prefetch.agent(qc, a.id); (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-md)' }}
               onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -122,7 +116,7 @@ export default function AgentsPage() {
               </thead>
               <tbody>
                 {filtered.map(a => (
-                  <tr key={a.id} onClick={() => router.push(`/agents/${a.id}`)} style={{ cursor: 'pointer' }}>
+                  <tr key={a.id} onClick={() => router.push(`/agents/${a.id}`)} onMouseEnter={() => prefetch.agent(qc, a.id)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={a.name} size="sm" hue={180} />

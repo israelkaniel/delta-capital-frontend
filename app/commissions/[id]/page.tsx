@@ -1,11 +1,12 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, commStatusLabel, type DbCommission, type DbCommissionReserve } from '@/lib/api'
-import { dbCommissions } from '@/lib/db'
+import { commStatusLabel, type DbCommission, type DbCommissionReserve } from '@/lib/api'
+import { useCommission, invalidate, qk } from '@/lib/queries'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { ReserveModal } from '@/components/commissions/reserve-modal'
@@ -18,20 +19,15 @@ const reserveStatusTone = (s: string): 'warn' | 'pos' | 'neg' | 'default' =>
 export default function CommissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const qc = useQueryClient()
 
-  const [commission, setCommission] = useState<DbCommission | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const commQ = useCommission(id)
+  const commission = commQ.data ?? null
+  const loading = commQ.isLoading
+  const error = commQ.error?.message ?? null
+  const fetchCommission = () => qc.invalidateQueries({ queryKey: qk.commissions.detail(id) })
+
   const [modal, setModal] = useState<{ mode: Mode; reserve?: DbCommissionReserve } | null>(null)
-
-  const fetchCommission = useCallback(async () => {
-    const res = await dbCommissions.get(id)
-    if (res.error) { setError(res.error.message); setLoading(false); return }
-    setCommission(res.data)
-    setLoading(false)
-  }, [id])
-
-  useEffect(() => { fetchCommission() }, [fetchCommission])
 
   if (loading) return (
     <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>

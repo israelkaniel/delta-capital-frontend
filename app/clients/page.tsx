@@ -1,10 +1,10 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, type DbAccount } from '@/lib/api'
-import { dbAccounts } from '@/lib/db'
+import { useAccountsList, invalidate, prefetch } from '@/lib/queries'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { ClientEditor } from '@/components/clients/client-editor'
@@ -13,20 +13,14 @@ const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
 
 export default function ClientsPage() {
   const router = useRouter()
-  const [accounts, setAccounts] = useState<(DbAccount & { contacts?: any[]; deals?: any[] })[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [search, setSearch]     = useState('')
+  const qc = useQueryClient()
+  const accountsQ = useAccountsList()
+  const accounts = accountsQ.data ?? []
+  const loading = accountsQ.isLoading
+  const refresh = () => invalidate.accounts(qc)
+
+  const [search, setSearch] = useState('')
   const [editorOpen, setEditorOpen] = useState(false)
-
-  const refresh = () => {
-    setLoading(true)
-    dbAccounts.list().then(res => {
-      setAccounts(res.data ?? [])
-      setLoading(false)
-    })
-  }
-
-  useEffect(() => { refresh() }, [])
 
   const filtered = useMemo(() =>
     accounts.filter(a => {
@@ -64,7 +58,10 @@ export default function ClientsPage() {
               </thead>
               <tbody>
                 {filtered.map(a => (
-                  <tr key={a.id} onClick={() => router.push(`/clients/${a.id}`)} style={{ cursor: 'pointer' }}>
+                  <tr key={a.id}
+                      onClick={() => router.push(`/clients/${a.id}`)}
+                      onMouseEnter={() => prefetch.account(qc, a.id)}
+                      style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={a.name} size="sm" hue={hueFromId(a.id)} />

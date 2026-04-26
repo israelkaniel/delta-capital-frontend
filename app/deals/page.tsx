@@ -4,13 +4,13 @@ import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, type DbDeal } from '@/lib/api'
-import { dbDeals } from '@/lib/db'
+import { useDealsList, useAgentsList, invalidate, prefetch } from '@/lib/queries'
+import { useQueryClient } from '@tanstack/react-query'
 import { StatusPill } from '@/components/ui/pill'
 import { AvatarStack } from '@/components/ui/avatar'
 import { useShell } from '@/components/shell/shell-provider'
 import { useToast } from '@/components/ui/toast/toast'
 import { useUserRole } from '@/lib/use-user-role'
-import { getAgents } from '@/lib/lookups'
 import { AdvancedFilter, type FilterState } from '@/components/ui/advanced-filter'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
@@ -116,11 +116,19 @@ export default function DealsPage() {
   const router = useRouter()
   const toast = useToast()
   const role = useUserRole()
+  const qc = useQueryClient()
   const { setNewDealOpen } = useShell()
 
-  const [deals, setDeals] = useState<DbDeal[]>([])
-  const [agentMap, setAgentMap] = useState<Map<string, string>>(new Map())
-  const [loading, setLoading] = useState(true)
+  const dealsQ  = useDealsList()
+  const agentsQ = useAgentsList()
+  const deals    = dealsQ.data ?? []
+  const agentMap = useMemo(
+    () => new Map((agentsQ.data ?? []).map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])),
+    [agentsQ.data],
+  )
+  const loading = dealsQ.isLoading
+  const refresh = () => invalidate.deals(qc)
+
   const [tab, setTab] = useState('All')
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<FilterState>({})
@@ -128,17 +136,6 @@ export default function DealsPage() {
   const [confirmDelete, setConfirmDelete] = useState<DbDeal | null>(null)
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [view, setView] = useState<'table' | 'tiles'>('table')
-
-  const refresh = useCallback(() => {
-    setLoading(true)
-    Promise.all([dbDeals.list(), getAgents()]).then(([res, agents]) => {
-      setDeals(res.data ?? [])
-      setAgentMap(new Map(agents.map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])))
-      setLoading(false)
-    })
-  }, [])
-
-  useEffect(() => { refresh() }, [refresh])
 
   const funders = useMemo(() => {
     const map = new Map<string, string>()
@@ -360,7 +357,7 @@ export default function DealsPage() {
               className="card"
               style={{ padding: 16, cursor: 'pointer', transition: 'box-shadow 0.15s, transform 0.1s' }}
               onClick={() => router.push(`/deals/${d.id}`)}
-              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 24px -8px rgba(0,0,0,0.15)' }}
+              onMouseEnter={e => { prefetch.deal(qc, d.id); e.currentTarget.style.boxShadow = '0 8px 24px -8px rgba(0,0,0,0.15)' }}
               onMouseLeave={e => { e.currentTarget.style.boxShadow = '' }}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
@@ -420,7 +417,10 @@ export default function DealsPage() {
               </thead>
               <tbody>
                 {filtered.map(d => (
-                  <tr key={d.id} className={selected.has(d.id) ? 'selected' : ''} onClick={() => router.push(`/deals/${d.id}`)} style={{ cursor: 'pointer' }}>
+                  <tr key={d.id} className={selected.has(d.id) ? 'selected' : ''}
+                      onClick={() => router.push(`/deals/${d.id}`)}
+                      onMouseEnter={() => prefetch.deal(qc, d.id)}
+                      style={{ cursor: 'pointer' }}>
                     <td onClick={e => { e.stopPropagation(); toggle(d.id) }}>
                       <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
                     </td>
