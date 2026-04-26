@@ -1,12 +1,13 @@
 'use client'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { api, type DbAccount, type DbContact } from '@/lib/api'
-import { dbAccounts } from '@/lib/db'
+import { useAccountsList, invalidate } from '@/lib/queries'
 import { ContactEditor } from '@/components/contacts/contact-editor'
 
 type FlatContact = DbContact & { accountName: string }
@@ -15,31 +16,26 @@ const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 47) % 360
 
 export default function ContactsPage() {
   const router = useRouter()
-  const [accounts, setAccounts] = useState<(DbAccount & { contacts?: DbContact[] })[]>([])
-  const [contacts, setContacts] = useState<FlatContact[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [accountFilter, setAccountFilter] = useState('')
-  const [editor, setEditor] = useState<{ accountId: string; editing?: DbContact } | null>(null)
-  const [pickAccount, setPickAccount] = useState(false)
+  const qc = useQueryClient()
+  const accountsQ = useAccountsList()
+  const accounts  = accountsQ.data ?? []
+  const loading   = accountsQ.isLoading
+  const refresh   = () => invalidate.accounts(qc)
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    const res = await dbAccounts.list()
-    if (res.error) { setLoading(false); return }
-    const list = res.data ?? []
-    setAccounts(list)
+  const contacts = useMemo<FlatContact[]>(() => {
     const flat: FlatContact[] = []
-    for (const a of list) {
+    for (const a of accounts) {
       for (const c of (a.contacts ?? [])) {
         flat.push({ ...c, accountName: a.name })
       }
     }
-    setContacts(flat)
-    setLoading(false)
-  }, [])
+    return flat
+  }, [accounts])
 
-  useEffect(() => { refresh() }, [refresh])
+  const [search, setSearch] = useState('')
+  const [accountFilter, setAccountFilter] = useState('')
+  const [editor, setEditor] = useState<{ accountId: string; editing?: DbContact } | null>(null)
+  const [pickAccount, setPickAccount] = useState(false)
 
   const filtered = useMemo(() => contacts.filter(c => {
     if (accountFilter && c.account_id !== accountFilter) return false

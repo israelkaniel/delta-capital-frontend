@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { useAgentsList, useReportsAgents, invalidate, prefetch } from '@/lib/queries'
+import { useAgentsSummary, invalidate, prefetch, qk } from '@/lib/queries'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -13,31 +13,26 @@ import { AgentEditor } from '@/components/agents/agent-editor'
 export default function AgentsPage() {
   const router = useRouter()
   const qc = useQueryClient()
-  const agentsQ = useAgentsList()
-  const perfQ   = useReportsAgents()
-  const agents  = agentsQ.data ?? []
-  const perf    = perfQ.data?.agents ?? []
-  const loading = agentsQ.isLoading
-  const refresh = () => invalidate.agents(qc)
+  const summaryQ = useAgentsSummary()
+  const agents   = summaryQ.data?.agents ?? []
+  const loading  = summaryQ.isLoading
+  const refresh  = () => { invalidate.agents(qc); qc.invalidateQueries({ queryKey: qk.page.agents() }) }
 
   const [search, setSearch] = useState('')
   const [view, setView]     = useState<'grid' | 'table'>('grid')
   const [editorOpen, setEditorOpen] = useState(false)
 
   const agentStats = useMemo(() =>
-    agents.map(a => {
-      const p = perf.find(x => x.agent_id === a.id)
-      return {
-        ...a,
-        name:         a.profiles?.name ?? a.code ?? '—',
-        email:        a.profiles?.email ?? '—',
-        total:        p?.total_commissions ?? 0,
-        dealCount:    p?.total_deals ?? 0,
-        activeDeals:  p?.active_deals ?? 0,
-        totalVolume:  p?.total_volume ?? 0,
-      }
-    }),
-    [agents, perf],
+    agents.map(a => ({
+      ...a,
+      name:         a.profiles?.name ?? a.code ?? '—',
+      email:        a.profiles?.email ?? '—',
+      total:        Number(a.total_commissions),
+      dealCount:    Number(a.total_deals),
+      activeDeals:  Number(a.active_deals),
+      totalVolume:  Number(a.total_volume),
+    })),
+    [agents],
   )
 
   const filtered = useMemo(() =>

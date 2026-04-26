@@ -1,43 +1,59 @@
 'use client'
-import { useState, useEffect } from 'react'
+// Reuses the payout_summary RPC: same balance shape as the per-agent ledger
+// endpoint, but returns all agents in one round-trip. Cache is shared with the
+// /payout page so navigating between them is instant.
+
+import { useMemo } from 'react'
 import Link from 'next/link'
-import { api, type DbAgent, type DbAgentBalances } from '@/lib/api'
-import { dbAgents } from '@/lib/db'
+import { usePayoutSummary } from '@/lib/queries'
 import { Avatar } from '@/components/ui/avatar'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 
-type AgentRow = DbAgent & DbAgentBalances
+type AgentRow = {
+  id: string
+  code: string | null
+  is_active: boolean
+  name: string
+  email: string | null
+  total_commissions: number
+  reserved_amount: number
+  reversed_amount: number
+  paid_amount: number
+  available_balance: number
+}
 
 export default function LedgerPage() {
-  const [rows, setRows]     = useState<AgentRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const summaryQ = usePayoutSummary()
+  const loading  = summaryQ.isLoading
 
-  useEffect(() => {
-    dbAgents.list().then(async agentsRes => {
-      const agents = agentsRes.data ?? []
-      const withBalances = await Promise.all(
-        agents.map(async a => {
-          const ledgerRes = await api.agents.ledger(a.id)
-          const balances  = ledgerRes.data?.balances ?? {
-            total_commissions: 0, reserved_amount: 0,
-            reversed_amount: 0, paid_amount: 0, available_balance: 0,
-          }
-          return { ...a, ...balances } as AgentRow
-        }),
-      )
-      setRows(withBalances.sort((a, b) => b.total_commissions - a.total_commissions))
-      setLoading(false)
-    })
-  }, [])
+  const rows = useMemo<AgentRow[]>(() => {
+    const agents = summaryQ.data?.agents ?? []
+    return agents
+      .map(a => {
+        const reserved = Math.max(0, Number(a.reserved_amount_raw))
+        const total    = Number(a.total_commissions)
+        const reversed = Number(a.reversed_amount)
+        const paid     = Number(a.paid_amount)
+        return {
+          id: a.id, code: a.code, is_active: a.is_active, name: a.name, email: a.email,
+          total_commissions: total,
+          reserved_amount:   reserved,
+          reversed_amount:   reversed,
+          paid_amount:       paid,
+          available_balance: Math.max(0, total - reserved - reversed - paid),
+        }
+      })
+      .sort((a, b) => b.total_commissions - a.total_commissions)
+  }, [summaryQ.data])
 
   const totals = rows.reduce(
     (acc, r) => ({
-      earned:    acc.earned    + Number(r.total_commissions),
-      reserve:   acc.reserve   + Number(r.reserved_amount),
-      reversed:  acc.reversed  + Number(r.reversed_amount),
-      paid:      acc.paid      + Number(r.paid_amount),
-      available: acc.available + Number(r.available_balance),
+      earned:    acc.earned    + r.total_commissions,
+      reserve:   acc.reserve   + r.reserved_amount,
+      reversed:  acc.reversed  + r.reversed_amount,
+      paid:      acc.paid      + r.paid_amount,
+      available: acc.available + r.available_balance,
     }),
     { earned: 0, reserve: 0, reversed: 0, paid: 0, available: 0 },
   )
@@ -73,7 +89,7 @@ export default function LedgerPage() {
               </thead>
               <tbody>
                 {rows.map(r => {
-                  const name = r.profiles?.name ?? r.code ?? '—'
+                  const name = r.name ?? r.code ?? '—'
                   return (
                     <tr key={r.id}>
                       <td>
@@ -85,12 +101,12 @@ export default function LedgerPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="num">{fmt.money(Number(r.total_commissions))}</td>
-                      <td className="num" style={{ color: 'var(--warn-ink)' }}>{fmt.money(Number(r.reserved_amount))}</td>
-                      <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(Number(r.reversed_amount))}</td>
-                      <td className="num">{fmt.money(Number(r.paid_amount))}</td>
-                      <td className="num" style={{ fontWeight: 700, color: Number(r.available_balance) > 0 ? 'var(--pos-ink)' : 'var(--ink)' }}>
-                        {fmt.money(Number(r.available_balance))}
+                      <td className="num">{fmt.money(r.total_commissions)}</td>
+                      <td className="num" style={{ color: 'var(--warn-ink)' }}>{fmt.money(r.reserved_amount)}</td>
+                      <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(r.reversed_amount)}</td>
+                      <td className="num">{fmt.money(r.paid_amount)}</td>
+                      <td className="num" style={{ fontWeight: 700, color: r.available_balance > 0 ? 'var(--pos-ink)' : 'var(--ink)' }}>
+                        {fmt.money(r.available_balance)}
                       </td>
                       <td>
                         <Link href={`/ledger/${r.id}`} className="btn sm ghost">View</Link>

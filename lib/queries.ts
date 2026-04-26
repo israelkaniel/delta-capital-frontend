@@ -57,8 +57,10 @@ export const qk = {
     me: () => ['user', 'me'] as const,
   },
   page: {
-    dashboard: () => ['page', 'dashboard'] as const,
-    payout:    () => ['page', 'payout'] as const,
+    dashboard:       () => ['page', 'dashboard'] as const,
+    payout:          () => ['page', 'payout'] as const,
+    agents:          () => ['page', 'agents'] as const,
+    agentDashboard:  (id: string) => ['page', 'agent-dashboard', id] as const,
   },
 } as const
 
@@ -107,6 +109,14 @@ export const useDashboardSummary = () => useQuery({
 })
 export const usePayoutSummary = () => useQuery({
   queryKey: qk.page.payout(), queryFn: () => unwrap(dbRpc.payoutSummary()),
+})
+export const useAgentsSummary = () => useQuery({
+  queryKey: qk.page.agents(), queryFn: () => unwrap(dbRpc.agentsSummary()),
+})
+export const useAgentDashboard = (id: string) => useQuery({
+  queryKey: qk.page.agentDashboard(id),
+  queryFn: () => unwrap(dbRpc.agentDashboard(id)),
+  enabled: !!id,
 })
 
 // ─── Edge-Function-backed hooks (kept for complex compute) ─────────────────

@@ -1,13 +1,12 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/avatar'
 import { Pill } from '@/components/ui/pill'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, type DbAgent, type DbAgentBalances, type DbLedgerEntry } from '@/lib/api'
-import { dbAgents } from '@/lib/db'
+import { useAgent, useAgentLedger } from '@/lib/queries'
 
 type Tone = 'pos' | 'neg' | 'warn' | 'info' | 'accent' | 'default'
 
@@ -35,25 +34,14 @@ const matchesFilter = (type: string, f: Filter) => {
 
 export default function AgentLedgerPage() {
   const { agentId } = useParams<{ agentId: string }>()
-  const [agent, setAgent] = useState<DbAgent | null>(null)
-  const [balances, setBalances] = useState<DbAgentBalances | null>(null)
-  const [entries, setEntries] = useState<DbLedgerEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const agentQ  = useAgent(agentId)
+  const ledgerQ = useAgentLedger(agentId)
+  const agent    = agentQ.data ?? null
+  const balances = ledgerQ.data?.balances ?? null
+  const entries  = ledgerQ.data?.entries ?? []
+  const loading  = agentQ.isLoading || ledgerQ.isLoading
+  const error    = agentQ.error?.message ?? ledgerQ.error?.message ?? null
   const [filter, setFilter] = useState<Filter>('All')
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    const [a, l] = await Promise.all([dbAgents.get(agentId), api.agents.ledger(agentId)])
-    if (a.error) { setError(a.error.message); setLoading(false); return }
-    if (l.error) { setError(l.error.message); setLoading(false); return }
-    setAgent(a.data)
-    setBalances(l.data?.balances ?? null)
-    setEntries(l.data?.entries ?? [])
-    setLoading(false)
-  }, [agentId])
-
-  useEffect(() => { refresh() }, [refresh])
 
   const filtered = useMemo(() => entries.filter(e => matchesFilter(e.type, filter)), [entries, filter])
 

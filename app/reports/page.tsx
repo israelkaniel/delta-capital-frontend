@@ -1,9 +1,10 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, type DbAgentPerformance, type DbMonthlySummary } from '@/lib/api'
+import { type DbMonthlySummary, type DbAgentPerformance } from '@/lib/api'
+import { useReportsAgents, useReportsMonthlyBatch } from '@/lib/queries'
 import { AreaChart } from '@/components/ui/charts'
 import { Avatar } from '@/components/ui/avatar'
 
@@ -24,37 +25,29 @@ function last6Months(now = new Date()): { month: number; year: number }[] {
 }
 
 export default function ReportsPage() {
-  const [agents, setAgents] = useState<DbAgentPerformance[]>([])
-  const [history, setHistory] = useState<MonthPoint[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const months    = useMemo(() => last6Months(), [])
+  const monthKeys = useMemo(() => months.map(m => monthKey(m.month, m.year)), [months])
 
-  useEffect(() => {
-    setLoading(true)
-    const months = last6Months()
-    const monthKeys = months.map(m => monthKey(m.month, m.year))
-    // Two requests instead of seven: agents-perf + a single batched 6-month report.
-    Promise.all([
-      api.reports.agents(),
-      api.reports.monthlyBatch(monthKeys),
-    ]).then(([agentsRes, batchRes]) => {
-      if (agentsRes.error) { setError(agentsRes.error.message); setLoading(false); return }
-      setAgents((agentsRes.data as any)?.agents ?? [])
-      const batch = (batchRes.data as Record<string, { summaries?: DbMonthlySummary[] }>) ?? {}
-      const points = months.map(m => {
-        const k = monthKey(m.month, m.year)
-        const r = batch[k]?.summaries ?? []
-        const totals = r.reduce((acc, s) => ({
-          earned:   acc.earned   + Number(s.total_earned),
-          paid:     acc.paid     + Number(s.total_paid),
-          reserved: acc.reserved + Number(s.total_reserved) - Number(s.total_released),
-        }), { earned: 0, paid: 0, reserved: 0 })
-        return { month: m.month, year: m.year, key: k, label: monthLabel(m.month, m.year), ...totals }
-      })
-      setHistory(points)
-      setLoading(false)
+  const agentsQ = useReportsAgents()
+  const batchQ  = useReportsMonthlyBatch(monthKeys)
+
+  const agents: DbAgentPerformance[] = (agentsQ.data as any)?.agents ?? []
+  const loading = agentsQ.isLoading || batchQ.isLoading
+  const error   = agentsQ.error?.message ?? batchQ.error?.message ?? null
+
+  const history = useMemo<MonthPoint[]>(() => {
+    const batch = (batchQ.data as Record<string, { summaries?: DbMonthlySummary[] }>) ?? {}
+    return months.map(m => {
+      const k = monthKey(m.month, m.year)
+      const r = batch[k]?.summaries ?? []
+      const totals = r.reduce((acc, s) => ({
+        earned:   acc.earned   + Number(s.total_earned),
+        paid:     acc.paid     + Number(s.total_paid),
+        reserved: acc.reserved + Number(s.total_reserved) - Number(s.total_released),
+      }), { earned: 0, paid: 0, reserved: 0 })
+      return { month: m.month, year: m.year, key: k, label: monthLabel(m.month, m.year), ...totals }
     })
-  }, [])
+  }, [batchQ.data, months])
 
   const totals = useMemo(() => history.reduce(
     (a, p) => ({ earned: a.earned + p.earned, paid: a.paid + p.paid, reserved: a.reserved + p.reserved }),

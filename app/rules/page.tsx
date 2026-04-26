@@ -1,10 +1,11 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { Pill } from '@/components/ui/pill'
 import { fmt } from '@/lib/fmt'
-import { api, type DbFunder, type DbAgent, type DbGlobalRule, type DbAgentRule } from '@/lib/api'
-import { dbAgents, dbFunders, dbRules } from '@/lib/db'
+import { api, type DbGlobalRule, type DbAgentRule } from '@/lib/api'
+import { useFundersList, useAgentsList, useGlobalRules, useAgentRules, invalidate } from '@/lib/queries'
 import { RuleEditor } from '@/components/rules/rule-editor'
 
 const TABS = [
@@ -31,32 +32,27 @@ const formatRate = (r: { type: string; fixed_rate: number | null; commission_tie
 }
 
 export default function RulesPage() {
+  const qc = useQueryClient()
   const [tab, setTab] = useState<TabKey>('global')
-  const [funders, setFunders] = useState<DbFunder[]>([])
-  const [agents, setAgents] = useState<DbAgent[]>([])
-  const [globalRules, setGlobalRules] = useState<DbGlobalRule[]>([])
-  const [agentRules, setAgentRules] = useState<DbAgentRule[]>([])
-  const [loading, setLoading] = useState(true)
   const [showInactive, setShowInactive] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<DbGlobalRule | DbAgentRule | undefined>(undefined)
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    const [f, a, g, ar] = await Promise.all([
-      dbFunders.list(),
-      dbAgents.list(),
-      dbRules.globalList(),
-      dbRules.agentList(),
-    ])
-    setFunders(f.data ?? [])
-    setAgents(a.data ?? [])
-    setGlobalRules(g.data ?? [])
-    setAgentRules(ar.data ?? [])
-    setLoading(false)
-  }, [])
+  const fundersQ     = useFundersList()
+  const agentsQ      = useAgentsList()
+  const globalRulesQ = useGlobalRules()
+  const agentRulesQ  = useAgentRules()
 
-  useEffect(() => { refresh() }, [refresh])
+  const funders     = fundersQ.data ?? []
+  const agents      = agentsQ.data ?? []
+  const globalRules = globalRulesQ.data ?? []
+  const agentRules  = agentRulesQ.data ?? []
+  const loading     = fundersQ.isLoading || agentsQ.isLoading || globalRulesQ.isLoading || agentRulesQ.isLoading
+  const refresh = () => {
+    invalidate.rules(qc)
+    invalidate.funders(qc)
+    invalidate.agents(qc)
+  }
 
   const visibleGlobal = useMemo(
     () => showInactive ? globalRules : globalRules.filter(isActive),

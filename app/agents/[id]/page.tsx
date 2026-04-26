@@ -6,9 +6,7 @@ import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, commStatusLabel, type DbAgent } from '@/lib/api'
-import {
-  useAgent, useAgentLedger, useDealsList, useCommissionsList, invalidate,
-} from '@/lib/queries'
+import { useAgentDashboard, invalidate, qk } from '@/lib/queries'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 
@@ -17,25 +15,21 @@ export default function AgentDetailPage() {
   const router = useRouter()
   const qc = useQueryClient()
 
-  const agentQ      = useAgent(id)
-  const ledgerQ     = useAgentLedger(id)
-  const allDealsQ   = useDealsList()
-  const commissionsQ = useCommissionsList({ agent_id: id })
-
-  const agent     = agentQ.data ?? null
-  const balances  = ledgerQ.data?.balances ?? null
-  const deals     = useMemo(
-    () => (allDealsQ.data ?? []).filter(deal => deal.deal_agents?.some(da => da.agent_id === id)),
-    [allDealsQ.data, id],
-  )
-  const commissions = commissionsQ.data ?? []
-  const loading   = agentQ.isLoading || ledgerQ.isLoading
-  const error     = agentQ.error?.message ?? null
-  const refresh   = () => invalidate.agents(qc)
+  const dashQ = useAgentDashboard(id)
+  const agent       = dashQ.data?.agent ?? null
+  const balances    = dashQ.data?.balances ?? null
+  const deals       = dashQ.data?.deals ?? []
+  const commissions = dashQ.data?.commissions ?? []
+  const loading = dashQ.isLoading
+  const error   = dashQ.error?.message ?? null
+  const refresh = () => {
+    invalidate.agents(qc)
+    qc.invalidateQueries({ queryKey: qk.page.agentDashboard(id) })
+  }
   const [savingActive, setSavingActive] = useState(false)
 
   const totalVolume = useMemo(
-    () => deals.reduce((s, d) => s + Number(d.transferred_amount ?? 0), 0),
+    () => deals.reduce((s: number, d: any) => s + Number(d.transferred_amount ?? 0), 0),
     [deals],
   )
 
@@ -148,8 +142,8 @@ export default function AgentDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {deals.map(d => {
-                    const myShare = d.deal_agents?.find(da => da.agent_id === id)?.share
+                  {deals.map((d: any) => {
+                    const myShare = d.my_share
                     return (
                       <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${d.id}`)}>
                         <td><span className="mono" style={{ color: 'var(--accent-ink)', fontWeight: 600, fontSize: 12 }}>{d.id.slice(0, 8)}</span></td>

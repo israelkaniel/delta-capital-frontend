@@ -50,9 +50,13 @@ const dealDetailSelect = `
   updater:updated_by(id, name)
 `
 
+// Hard server-side cap to prevent unbounded scans. Lists rarely need
+// more than the most-recent 500 — pagination UI is the next step.
+const LIST_CAP = 500
+
 export const dbDeals = {
   list: () => wrap<DbDeal[]>(
-    supabase.from('deals').select(dealListSelect).order('created_at', { ascending: false }),
+    supabase.from('deals').select(dealListSelect).order('created_at', { ascending: false }).limit(LIST_CAP),
   ),
   get: (id: string) =>
     wrap<DbDeal>(
@@ -108,7 +112,7 @@ export const dbCommissions = {
       const end = new Date(Number(y), Number(m), 0).toISOString().split('T')[0]
       q = q.gte('calculated_at', start).lte('calculated_at', end + 'T23:59:59Z')
     }
-    return wrap<DbCommission[]>(q)
+    return wrap<DbCommission[]>(q.limit(LIST_CAP))
   },
   get: (id: string) =>
     wrap<DbCommission>(supabase.from('commissions').select(commissionDetailSelect).eq('id', id).single()),
@@ -134,7 +138,7 @@ export const dbAccounts = {
       .select('*, contacts(id, name, email, phone), deals(id, status, transferred_amount)')
       .order('name')
     if (params?.q) q = q.ilike('name', `%${params.q}%`)
-    return wrap<DbAccountWith[]>(q)
+    return wrap<DbAccountWith[]>(q.limit(LIST_CAP))
   },
   get: (id: string) => wrap<DbAccountWith>(
     supabase.from('accounts').select(`
@@ -166,7 +170,7 @@ export const dbPayments = {
       .select('*, agents(*, profiles:user_id(name))')
       .order('payment_date', { ascending: false })
     if (params?.agent_id) q = q.eq('agent_id', params.agent_id)
-    return wrap<DbPayment[]>(q)
+    return wrap<DbPayment[]>(q.limit(LIST_CAP))
   },
 }
 
@@ -205,9 +209,30 @@ export interface PayoutSummary {
   payments: { id: string; agent_id: string; amount: number; payment_date: string; reference: string | null; agent_name: string }[]
 }
 
+export interface AgentsSummary {
+  agents: {
+    id: string; code: string | null; is_active: boolean; user_id: string | null; created_at: string
+    profiles: { id: string; name: string; email: string; role: string; is_active: boolean } | null
+    name: string
+    total_deals: number; active_deals: number; total_volume: number; total_commissions: number
+  }[]
+}
+
+export interface AgentDashboard {
+  agent: DbAgent
+  balances: {
+    total_commissions: number; reserved_amount: number; reversed_amount: number
+    paid_amount: number; available_balance: number
+  }
+  deals: any[]
+  commissions: any[]
+}
+
 export const dbRpc = {
   dashboardSummary: () => wrap<DashboardSummary>(supabase.rpc('dashboard_summary')),
   payoutSummary:    () => wrap<PayoutSummary>(supabase.rpc('payout_summary')),
+  agentsSummary:    () => wrap<AgentsSummary>(supabase.rpc('agents_summary')),
+  agentDashboard:   (id: string) => wrap<AgentDashboard>(supabase.rpc('agent_dashboard', { p_agent_id: id })),
 }
 
 // ─── Notes (deal_notes) ────────────────────────────────────────────────────
