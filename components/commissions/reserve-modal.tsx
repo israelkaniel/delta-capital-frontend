@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
+import { useToast } from '@/components/ui/toast/toast'
 import { api, type DbCommission, type DbCommissionReserve } from '@/lib/api'
 
 type Mode = 'reserve' | 'release' | 'reverse'
@@ -23,6 +24,7 @@ export function ReserveModal({
   reserve?: DbCommissionReserve
   onDone: () => void
 }) {
+  const toast = useToast()
   const [amount, setAmount] = useState<string>('')
   const [reason, setReason] = useState('')
   const [notes, setNotes]   = useState('')
@@ -50,6 +52,8 @@ export function ReserveModal({
         const res = await api.reverse({ reserve_id: reserve.id, notes: notes || undefined })
         if (res.error) throw res.error
       }
+      const labels = { reserve: 'Reserve placed', release: 'Reserve released', reverse: 'Commission reversed' }
+      toast.success(labels[mode])
       onDone()
       handleClose()
     } catch (e: any) {

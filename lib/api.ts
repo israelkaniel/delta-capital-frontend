@@ -106,6 +106,22 @@ export interface DbAgentPerformance {
   total_volume: number; total_commissions: number
 }
 
+export interface DbDealNote {
+  id: string; deal_id: string; body: string
+  created_by: string; created_at: string
+  profiles?: { name?: string } | null
+}
+
+export interface DbAuditLog {
+  id: string
+  entity: string; entity_id: string; action: string
+  prev_value?: Record<string, unknown> | null
+  new_value?: Record<string, unknown> | null
+  user_id: string; created_at: string
+  notes?: string
+  profiles?: { name?: string } | null
+}
+
 // ─── API functions ────────────────────────────────────────────────────────────
 
 export const api = {
@@ -136,6 +152,18 @@ export const api = {
     }) => invokeFunction<DbDeal>(`loans/${id}/status`, { method: 'PATCH', body }),
     update: (id: string, body: Partial<DbDeal>) =>
       invokeFunction<DbDeal>(`loans/${id}`, { method: 'PATCH', body }),
+    delete: (id: string) =>
+      invokeFunction<{ success: boolean }>(`loans/${id}`, { method: 'DELETE' }),
+    notes: {
+      list: (dealId: string) =>
+        invokeFunction<DbDealNote[]>(`loans/${dealId}/notes`),
+      create: (dealId: string, body: string) =>
+        invokeFunction<DbDealNote>(`loans/${dealId}/notes`, { method: 'POST', body: { body } }),
+      delete: (dealId: string, noteId: string) =>
+        invokeFunction<{ success: boolean }>(`loans/${dealId}/notes/${noteId}`, { method: 'DELETE' }),
+    },
+    timeline: (id: string) =>
+      invokeFunction<{ audits: DbAuditLog[]; notes: DbDealNote[] }>(`loans/${id}/timeline`),
   },
 
   // ── Commissions ──

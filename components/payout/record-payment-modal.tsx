@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
+import { useToast } from '@/components/ui/toast/toast'
 import { api } from '@/lib/api'
 
 export function RecordPaymentModal({
@@ -15,6 +16,7 @@ export function RecordPaymentModal({
   suggestedAmount: number
   onDone: () => void
 }) {
+  const toast = useToast()
   const today = new Date().toISOString().split('T')[0]
   const [amount, setAmount] = useState(String(suggestedAmount || ''))
   const [date, setDate] = useState(today)
@@ -34,6 +36,7 @@ export function RecordPaymentModal({
         reference: reference || undefined, notes: notes || undefined,
       })
       if (res.error) throw res.error
+      toast.success('Payment recorded', `${fmt.money(n)} to ${agentName}`)
       onDone()
       handleClose()
     } catch (e: any) {

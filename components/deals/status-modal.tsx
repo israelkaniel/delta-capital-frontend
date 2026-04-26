@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
+import { useToast } from '@/components/ui/toast/toast'
 import { api, type DbDeal } from '@/lib/api'
 
 const STATUSES = [
@@ -22,6 +23,7 @@ export function DealStatusModal({
   deal: DbDeal
   onDone: () => void
 }) {
+  const toast = useToast()
   const [status, setStatus] = useState(deal.status)
   const [transferred, setTransferred] = useState(deal.transferred_amount != null ? String(deal.transferred_amount) : '')
   const [payback, setPayback] = useState(deal.payback_amount != null ? String(deal.payback_amount) : '')
@@ -53,8 +55,11 @@ export function DealStatusModal({
       const data = res.data as any
       if (data?.commission_warning) {
         setWarning('Status saved but commission calc failed: ' + data.commission_warning)
+        toast.warn('Status updated', `Commission calc skipped: ${data.commission_warning}`)
+        onDone()
         return
       }
+      toast.success('Deal status updated', status === 'FUNDS_TRANSFERRED' ? 'Commissions calculated' : undefined)
       onDone(); onClose()
     } catch (e: any) {
       setError(e?.message ?? 'Failed to update status')

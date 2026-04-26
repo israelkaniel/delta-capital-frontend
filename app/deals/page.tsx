@@ -1,30 +1,31 @@
 'use client'
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, dealStatusLabel, dealStatusTone, type DbDeal } from '@/lib/api'
+import { api, dealStatusLabel, type DbDeal } from '@/lib/api'
 import { StatusPill } from '@/components/ui/pill'
 import { AvatarStack } from '@/components/ui/avatar'
 import { useShell } from '@/components/shell/shell-provider'
+import { useToast } from '@/components/ui/toast/toast'
+import { useUserRole } from '@/lib/use-user-role'
+import { AdvancedFilter, type FilterState } from '@/components/ui/advanced-filter'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
-// Map DB deal status to UI tab label
-const dbStatusToTab: Record<string, string> = {
+const TAB_BY_STATUS: Record<string, string> = {
   FUNDS_TRANSFERRED: 'Active',
   APPROVED:          'Approved',
   PENDING:           'Pending',
   CANCELLED:         'Declined',
 }
-
 const TABS = ['All', 'Active', 'Approved', 'Pending', 'Declined']
 
-function dealTab(d: DbDeal) { return dbStatusToTab[d.status] ?? 'Pending' }
-function dealAmount(d: DbDeal) { return Number(d.transferred_amount ?? d.payback_amount ?? 0) }
-function dealClient(d: DbDeal) { return d.accounts?.name ?? '—' }
-function dealFunder(d: DbDeal) { return d.funders?.name ?? '—' }
-function dealAgentNames(d: DbDeal) {
-  return (d.deal_agents ?? []).map(da => da.agents?.profiles?.name ?? da.agents?.code ?? '—')
-}
+const dealTab    = (d: DbDeal) => TAB_BY_STATUS[d.status] ?? 'Pending'
+const dealAmount = (d: DbDeal) => Number(d.transferred_amount ?? d.payback_amount ?? 0)
+const dealClient = (d: DbDeal) => d.accounts?.name ?? '—'
+const dealFunder = (d: DbDeal) => d.funders?.name ?? '—'
+const dealAgentNames = (d: DbDeal) =>
+  (d.deal_agents ?? []).map(da => da.agents?.profiles?.name ?? da.agents?.code ?? '—')
 
 function exportCSV(rows: DbDeal[]) {
   const headers = ['Deal ID', 'Client', 'Funder', 'Amount', 'Status', 'Funded Date', 'Created']
@@ -45,9 +46,13 @@ function exportCSV(rows: DbDeal[]) {
   a.click()
 }
 
-function RowMenu({ deal }: { deal: DbDeal }) {
+function RowMenu({ deal, canDelete, onDelete }: {
+  deal: DbDeal
+  canDelete: boolean
+  onDelete: () => void
+}) {
   const [open, setOpen] = useState(false)
-  const ref  = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -66,63 +71,132 @@ function RowMenu({ deal }: { deal: DbDeal }) {
         <div style={{
           position: 'absolute', right: 0, top: '100%', zIndex: 100, marginTop: 4,
           background: 'var(--bg-elev)', border: '1px solid var(--line)', borderRadius: 8,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.12)', minWidth: 160, overflow: 'hidden',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12)', minWidth: 180, overflow: 'hidden',
         }}>
-          {[
-            { label: 'Open', icon: Icons.Chevron, action: () => { router.push(`/deals/${deal.id}`); setOpen(false) } },
-            { label: 'Export CSV', icon: Icons.Download, action: () => { exportCSV([deal]); setOpen(false) } },
-          ].map(item => (
-            <button key={item.label} onClick={item.action} style={{
-              display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 14px',
-              background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, textAlign: 'left',
-              color: 'var(--ink-1)', fontFamily: 'var(--font-sans)',
-            }}>
-              <item.icon style={{ width: 13, height: 13, flexShrink: 0 }} />
-              {item.label}
-            </button>
-          ))}
+          <MenuItem onClick={() => { router.push(`/deals/${deal.id}`); setOpen(false) }} icon={Icons.Chevron}>Open</MenuItem>
+          <MenuItem onClick={() => { exportCSV([deal]); setOpen(false) }} icon={Icons.Download}>Export CSV</MenuItem>
+          {canDelete && (
+            <>
+              <div style={{ height: 1, background: 'var(--line)' }} />
+              <MenuItem
+                onClick={() => { onDelete(); setOpen(false) }}
+                icon={Icons.Trash}
+                tone="danger"
+              >Delete deal…</MenuItem>
+            </>
+          )}
         </div>
       )}
     </div>
   )
 }
 
+function MenuItem({ onClick, icon: Icon, children, tone }: {
+  onClick: () => void
+  icon: React.FC<React.SVGProps<SVGSVGElement>>
+  children: React.ReactNode
+  tone?: 'danger'
+}) {
+  return (
+    <button onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+      padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer',
+      fontSize: 12.5, textAlign: 'left',
+      color: tone === 'danger' ? 'var(--neg)' : 'var(--ink-1)',
+    }}>
+      <Icon style={{ width: 13, height: 13, flexShrink: 0 }} />
+      {children}
+    </button>
+  )
+}
+
 export default function DealsPage() {
   const router = useRouter()
+  const toast = useToast()
+  const role = useUserRole()
   const { setNewDealOpen } = useShell()
 
   const [deals, setDeals] = useState<DbDeal[]>([])
   const [loading, setLoading] = useState(true)
-
-  const [search, setSearch]   = useState('')
-  const [tab, setTab]         = useState('All')
-  const [funder, setFunder]   = useState('')
+  const [tab, setTab] = useState('All')
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<FilterState>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmDelete, setConfirmDelete] = useState<DbDeal | null>(null)
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
+    setLoading(true)
     api.deals.list().then(res => {
       setDeals(res.data ?? [])
       setLoading(false)
     })
   }, [])
 
-  const funders = useMemo(() => Array.from(new Set(deals.map(d => dealFunder(d)))).sort(), [deals])
+  useEffect(() => { refresh() }, [refresh])
+
+  const funders = useMemo(() => {
+    const map = new Map<string, string>()
+    deals.forEach(d => { if (d.funders) map.set(d.funders.id, d.funders.name) })
+    return Array.from(map, ([id, name]) => ({ value: id, label: name }))
+  }, [deals])
+
+  const filterSpecs = useMemo(() => ([
+    { kind: 'multi' as const, key: 'status', label: 'Status', options: [
+      { value: 'PENDING',           label: 'Pending' },
+      { value: 'APPROVED',          label: 'Approved' },
+      { value: 'FUNDS_TRANSFERRED', label: 'Funded' },
+      { value: 'CANCELLED',         label: 'Cancelled' },
+    ] },
+    { kind: 'multi' as const, key: 'funder', label: 'Funder', options: funders },
+    { kind: 'search' as const, key: 'client', label: 'Client name', placeholder: 'Search clients…' },
+    { kind: 'numRange' as const, key: 'amount', label: 'Transferred amount ($)', prefix: '$' },
+    { kind: 'dateRange' as const, key: 'funded', label: 'Funded date' },
+    { kind: 'dateRange' as const, key: 'created', label: 'Created date' },
+  ]), [funders])
 
   const filtered = useMemo(() => deals.filter(d => {
     if (tab !== 'All' && dealTab(d) !== tab) return false
-    if (funder && dealFunder(d) !== funder) return false
+
     if (search) {
       const q = search.toLowerCase()
-      return (
-        d.id.toLowerCase().includes(q) ||
-        dealClient(d).toLowerCase().includes(q) ||
-        dealFunder(d).toLowerCase().includes(q) ||
-        dealStatusLabel(d.status).toLowerCase().includes(q) ||
-        dealAgentNames(d).some(n => n.toLowerCase().includes(q))
-      )
+      const matchSearch = d.id.toLowerCase().includes(q)
+        || dealClient(d).toLowerCase().includes(q)
+        || dealFunder(d).toLowerCase().includes(q)
+        || dealStatusLabel(d.status).toLowerCase().includes(q)
+        || dealAgentNames(d).some(n => n.toLowerCase().includes(q))
+      if (!matchSearch) return false
     }
+
+    const fStatus = filters.status as string[] | undefined
+    if (fStatus && fStatus.length > 0 && !fStatus.includes(d.status)) return false
+
+    const fFunder = filters.funder as string[] | undefined
+    if (fFunder && fFunder.length > 0 && !fFunder.includes(d.funders?.id ?? '')) return false
+
+    const fClient = (filters.client as string | undefined)?.trim().toLowerCase()
+    if (fClient && !dealClient(d).toLowerCase().includes(fClient)) return false
+
+    const fAmount = filters.amount as { min?: string; max?: string } | undefined
+    if (fAmount?.min && dealAmount(d) < Number(fAmount.min)) return false
+    if (fAmount?.max && dealAmount(d) > Number(fAmount.max)) return false
+
+    const fFunded = filters.funded as { from?: string; to?: string } | undefined
+    if (fFunded?.from || fFunded?.to) {
+      const fundedAt = d.funds_transferred_at?.split('T')[0]
+      if (!fundedAt) return false
+      if (fFunded.from && fundedAt < fFunded.from) return false
+      if (fFunded.to && fundedAt > fFunded.to) return false
+    }
+
+    const fCreated = filters.created as { from?: string; to?: string } | undefined
+    if (fCreated?.from || fCreated?.to) {
+      const createdAt = d.created_at?.split('T')[0] ?? ''
+      if (fCreated.from && createdAt < fCreated.from) return false
+      if (fCreated.to && createdAt > fCreated.to) return false
+    }
+
     return true
-  }), [search, tab, funder, deals])
+  }), [deals, tab, search, filters])
 
   const toggle = (id: string) => {
     const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s)
@@ -135,6 +209,20 @@ export default function DealsPage() {
     pending: deals.filter(d => d.status === 'PENDING').length,
     volume:  deals.filter(d => d.status === 'FUNDS_TRANSFERRED').reduce((a, d) => a + dealAmount(d), 0),
   }
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return
+    const res = await api.deals.delete(confirmDelete.id)
+    if (res.error) {
+      toast.error('Delete failed', res.error.message)
+      return
+    }
+    toast.success('Deal deleted', `${dealClient(confirmDelete)} · ${confirmDelete.id.slice(0, 8)}`)
+    setConfirmDelete(null)
+    refresh()
+  }
+
+  const canDelete = role === 'ADMIN'
 
   return (
     <div className="page wide" style={{ padding: '20px 28px 80px' }}>
@@ -165,23 +253,68 @@ export default function DealsPage() {
         })}
       </div>
 
-      {/* Search + filter bar */}
+      {/* Search + advanced filter bar */}
       <div className="filter-bar">
         <div className="srch">
           <Icons.Search style={{ color: 'var(--ink-4)', flexShrink: 0, width: 13, height: 13 }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search deals, clients, funders, agents…" />
           {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-4)', padding: 0, display: 'flex' }}><Icons.X style={{ width: 13, height: 13 }} /></button>}
         </div>
-        <select value={funder} onChange={e => setFunder(e.target.value)} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--ink-1)', fontSize: 12, outline: 'none' }}>
-          <option value="">All funders</option>
-          {funders.map(f => <option key={f} value={f}>{f}</option>)}
-        </select>
-        {funder && <button className="btn sm ghost" onClick={() => setFunder('')}>Clear</button>}
+        <AdvancedFilter
+          specs={filterSpecs}
+          value={filters}
+          onChange={setFilters}
+          onReset={() => setFilters({})}
+        />
       </div>
+
+      {/* Active filter chips */}
+      {Object.keys(filters).length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+          {filterSpecs.map(spec => {
+            const v = filters[spec.key]
+            if (!v) return null
+            let label = ''
+            if (spec.kind === 'multi') {
+              const arr = v as string[]
+              if (!arr.length) return null
+              const names = arr.map(x => spec.options.find(o => o.value === x)?.label ?? x).join(', ')
+              label = `${spec.label}: ${names}`
+            } else if (spec.kind === 'search') {
+              if (!(v as string).trim()) return null
+              label = `${spec.label}: ${v}`
+            } else if (spec.kind === 'numRange') {
+              const r = v as { min?: string; max?: string }
+              if (!r.min && !r.max) return null
+              label = `${spec.label}: ${r.min ?? '…'} – ${r.max ?? '…'}`
+            } else if (spec.kind === 'dateRange') {
+              const r = v as { from?: string; to?: string }
+              if (!r.from && !r.to) return null
+              label = `${spec.label}: ${r.from ?? '…'} → ${r.to ?? '…'}`
+            }
+            if (!label) return null
+            return (
+              <button
+                key={spec.key}
+                className="chip"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                onClick={() => {
+                  const next = { ...filters }
+                  delete next[spec.key]
+                  setFilters(next)
+                }}
+                type="button"
+              >
+                {label} <Icons.X style={{ width: 11, height: 11 }} />
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div style={{ margin: '8px 0', padding: '10px 16px', background: 'var(--bg-sunk)', border: '1px solid var(--line)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ margin: '10px 0', padding: '10px 16px', background: 'var(--bg-sunk)', border: '1px solid var(--line)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink-2)' }}>{selected.size} selected</span>
           <button className="btn sm" onClick={() => exportCSV(deals.filter(d => selected.has(d.id)))}><Icons.Download /> Export CSV</button>
           <div style={{ flex: 1 }} />
@@ -190,7 +323,7 @@ export default function DealsPage() {
       )}
 
       {/* Table */}
-      <div className="card" style={{ marginTop: 8 }}>
+      <div className="card" style={{ marginTop: 12 }}>
         {loading ? (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>Loading deals…</div>
         ) : (
@@ -227,7 +360,13 @@ export default function DealsPage() {
                     <td><StatusPill status={dealStatusLabel(d.status)} /></td>
                     <td className="muted-num">{d.funds_transferred_at ? fmt.dateShort(d.funds_transferred_at) : '—'}</td>
                     <td className="muted-num">{fmt.dateShort(d.created_at)}</td>
-                    <td onClick={e => e.stopPropagation()}><RowMenu deal={d} /></td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <RowMenu
+                        deal={d}
+                        canDelete={canDelete}
+                        onDelete={() => setConfirmDelete(d)}
+                      />
+                    </td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
@@ -235,7 +374,7 @@ export default function DealsPage() {
                     <div className="empty-state">
                       <div className="empty-state-icon"><Icons.Search /></div>
                       <p className="empty-state-title">No deals found</p>
-                      <p className="empty-state-sub">Try adjusting your search or filters</p>
+                      <p className="empty-state-sub">{deals.length === 0 ? 'Create your first deal to get started' : 'Try adjusting your search or filters'}</p>
                     </div>
                   </td></tr>
                 )}
@@ -248,6 +387,18 @@ export default function DealsPage() {
           <span>Volume: <span className="num" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{fmt.money(filtered.reduce((a, d) => a + dealAmount(d), 0))}</span></span>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete deal?"
+        message={confirmDelete
+          ? `Permanently delete ${dealClient(confirmDelete)} · ${confirmDelete.id.slice(0, 8)}? This will also remove its agent assignments and any commission records. This cannot be undone.`
+          : ''}
+        confirmLabel="Delete deal"
+        tone="danger"
+      />
     </div>
   )
 }

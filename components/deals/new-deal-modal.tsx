@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { Avatar } from '@/components/ui/avatar'
+import { useToast } from '@/components/ui/toast/toast'
 import {
   api,
   type DbAccount, type DbFunder, type DbAgent, type DbGlobalRule,
@@ -218,6 +219,7 @@ function DealLivePanel({
 
 export function NewDealModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter()
+  const toast = useToast()
   const [step, setStep] = useState(0)
   const [draft, setDraft] = useState<DealDraft>(EMPTY_DRAFT)
   const [accounts, setAccounts] = useState<DbAccount[]>([])
@@ -310,6 +312,7 @@ export function NewDealModal({ open, onClose }: { open: boolean; onClose: () => 
         console.error('Deal created but server returned no id:', res.data)
         throw new Error('Deal created but no id returned — refresh the deals list')
       }
+      toast.success('העסקה נוצרה בהצלחה', `Opening deal ${newId.slice(0, 8)}…`)
       onClose()
       router.push(`/deals/${newId}`)
       router.refresh()

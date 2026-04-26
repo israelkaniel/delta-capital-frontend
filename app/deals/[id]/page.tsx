@@ -4,12 +4,19 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { api, dealStatusLabel, commStatusLabel, type DbDeal, type DbCommission } from '@/lib/api'
+import {
+  api, dealStatusLabel, commStatusLabel,
+  type DbDeal, type DbCommission, type DbDealNote, type DbAuditLog,
+} from '@/lib/api'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
+import { useToast } from '@/components/ui/toast/toast'
+import { useUserRole } from '@/lib/use-user-role'
 import { DealStatusModal } from '@/components/deals/status-modal'
+import { EditDealModal } from '@/components/deals/edit-deal-modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
-const TABS = ['Overview', 'Commissions', 'Contacts'] as const
+const TABS = ['Overview', 'Commissions', 'Notes', 'Timeline', 'Contacts'] as const
 type Tab = typeof TABS[number]
 
 type DealFull = DbDeal & {
@@ -17,17 +24,53 @@ type DealFull = DbDeal & {
   commissions?: DbCommission[]
 }
 
+const auditIcon = (action: string): React.FC<React.SVGProps<SVGSVGElement>> => {
+  if (action === 'CREATE')        return Icons.Plus
+  if (action === 'UPDATE')        return Icons.Edit
+  if (action === 'STATUS_CHANGE') return Icons.Sparkles
+  if (action === 'DELETE')        return Icons.Trash
+  if (action === 'CLOSE')         return Icons.Check
+  return Icons.Clock
+}
+
+const auditLabel = (a: DbAuditLog): string => {
+  if (a.entity === 'deals' && a.action === 'CREATE')        return 'Deal created'
+  if (a.entity === 'deals' && a.action === 'UPDATE')        return 'Deal details updated'
+  if (a.entity === 'deals' && a.action === 'STATUS_CHANGE') {
+    const from = (a.prev_value as any)?.status ?? '?'
+    const to   = (a.new_value  as any)?.status ?? '?'
+    return `Status: ${from} → ${to}`
+  }
+  if (a.entity === 'deals' && a.action === 'DELETE')        return 'Deal deleted'
+  if (a.entity === 'deal_notes' && a.action === 'CREATE')   return 'Note added'
+  if (a.entity === 'deal_notes' && a.action === 'DELETE')   return 'Note removed'
+  if (a.entity === 'commissions' && a.action === 'CREATE') {
+    const total = (a.new_value as any)?.total_amount
+    return total != null ? `Commission earned (${fmt.money(Number(total))})` : 'Commission created'
+  }
+  return `${a.entity} · ${a.action}`
+}
+
 export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const toast = useToast()
+  const role = useUserRole()
   const [tab, setTab] = useState<Tab>('Overview')
 
   const [deal, setDeal] = useState<DealFull | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusOpen, setStatusOpen] = useState(false)
-  const [savingNotes, setSavingNotes] = useState(false)
-  const [notesDraft, setNotesDraft] = useState<string | null>(null)
+  const [editOpen, setEditOpen]     = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const [notes, setNotes]     = useState<DbDealNote[]>([])
+  const [noteDraft, setNoteDraft] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
+
+  const [timeline, setTimeline] = useState<{ audits: DbAuditLog[]; notes: DbDealNote[] } | null>(null)
+  const [timelineLoading, setTimelineLoading] = useState(false)
 
   const refresh = useCallback(async () => {
     const res = await api.deals.get(id)
@@ -36,20 +79,52 @@ export default function DealDetailPage() {
     setLoading(false)
   }, [id])
 
+  const refreshNotes = useCallback(async () => {
+    const res = await api.deals.notes.list(id)
+    setNotes(res.data ?? [])
+  }, [id])
+
+  const refreshTimeline = useCallback(async () => {
+    setTimelineLoading(true)
+    const res = await api.deals.timeline(id)
+    setTimeline(res.data ?? { audits: [], notes: [] })
+    setTimelineLoading(false)
+  }, [id])
+
   useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { if (tab === 'Notes')    refreshNotes() }, [tab, refreshNotes])
+  useEffect(() => { if (tab === 'Timeline') refreshTimeline() }, [tab, refreshTimeline])
 
-  const totalCommissions = useMemo(() => {
-    return (deal?.commissions ?? []).reduce((s, c) => s + Number(c.total_amount), 0)
-  }, [deal])
+  const totalCommissions = useMemo(
+    () => (deal?.commissions ?? []).reduce((s, c) => s + Number(c.total_amount), 0),
+    [deal],
+  )
 
-  const saveNotes = async () => {
-    if (notesDraft === null || !deal) return
-    setSavingNotes(true)
-    const res = await api.deals.update(deal.id, { notes: notesDraft })
-    setSavingNotes(false)
-    if (res.error) { alert(res.error.message); return }
-    setNotesDraft(null)
-    refresh()
+  const addNote = async () => {
+    const body = noteDraft.trim()
+    if (!body) return
+    setNoteSaving(true)
+    const res = await api.deals.notes.create(id, body)
+    setNoteSaving(false)
+    if (res.error) { toast.error('Note failed', res.error.message); return }
+    setNoteDraft('')
+    toast.success('Note added')
+    refreshNotes()
+  }
+
+  const removeNote = async (noteId: string) => {
+    if (!confirm('Remove this note?')) return
+    const res = await api.deals.notes.delete(id, noteId)
+    if (res.error) { toast.error('Delete failed', res.error.message); return }
+    toast.success('Note removed')
+    refreshNotes()
+  }
+
+  const handleDeleteDeal = async () => {
+    const res = await api.deals.delete(id)
+    if (res.error) { toast.error('Delete failed', res.error.message); return }
+    toast.success('Deal deleted')
+    router.push('/deals')
   }
 
   if (loading) return (
@@ -63,15 +138,17 @@ export default function DealDetailPage() {
     </div>
   )
 
-  const account = deal.accounts
-  const funder  = deal.funders
-  const dealAgents = deal.deal_agents ?? []
+  const account     = deal.accounts
+  const funder      = deal.funders
+  const dealAgents  = deal.deal_agents ?? []
   const commissions = deal.commissions ?? []
   const contactsList = (account as any)?.contacts ?? []
+  const canDelete = role === 'ADMIN'
 
-  const tabBadge = (t: Tab) => {
+  const tabBadge = (t: Tab): number | undefined => {
     if (t === 'Commissions') return commissions.length
-    if (t === 'Contacts') return contactsList.length
+    if (t === 'Contacts')    return contactsList.length
+    if (t === 'Notes')       return notes.length || undefined
     return undefined
   }
 
@@ -98,9 +175,17 @@ export default function DealDetailPage() {
           </div>
         </div>
         <div className="actions">
-          <button className="btn sm primary" onClick={() => setStatusOpen(true)}>
-            <Icons.Edit style={{ width: 13, height: 13 }} /> Update status
+          <button className="btn sm" onClick={() => setEditOpen(true)}>
+            <Icons.Edit style={{ width: 13, height: 13 }} /> Edit
           </button>
+          <button className="btn sm primary" onClick={() => setStatusOpen(true)}>
+            <Icons.Sparkles style={{ width: 13, height: 13 }} /> Update status
+          </button>
+          {canDelete && (
+            <button className="btn sm danger" onClick={() => setConfirmDelete(true)}>
+              <Icons.Trash style={{ width: 13, height: 13 }} /> Delete
+            </button>
+          )}
           <button className="close-btn" onClick={() => router.push('/deals')}>
             <Icons.X /> Close
           </button>
@@ -166,9 +251,7 @@ export default function DealDetailPage() {
                         {'pill' in f ? (
                           <StatusPill status={String(f.pill)} />
                         ) : 'link' in f && f.link ? (
-                          <Link href={f.link} style={{
-                            color: 'var(--accent-ink)', textDecoration: 'none', fontWeight: 500,
-                          }}>{f.value}</Link>
+                          <Link href={f.link} style={{ color: 'var(--accent-ink)', textDecoration: 'none', fontWeight: 500 }}>{f.value}</Link>
                         ) : (
                           <span style={{
                             fontWeight: 'bold' in f && f.bold ? 600 : 500,
@@ -218,37 +301,19 @@ export default function DealDetailPage() {
               </div>
             </div>
 
-            <div className="card">
-              <div className="card-head">
-                <h3>Notes</h3>
-                {notesDraft !== null ? (
-                  <div className="actions">
-                    <button className="btn sm" onClick={() => setNotesDraft(null)} disabled={savingNotes}>Cancel</button>
-                    <button className="btn sm primary" onClick={saveNotes} disabled={savingNotes}>{savingNotes ? 'Saving…' : 'Save'}</button>
-                  </div>
-                ) : (
-                  <button className="btn sm ghost" onClick={() => setNotesDraft(deal.notes ?? '')}>
+            {deal.notes && (
+              <div className="card">
+                <div className="card-head">
+                  <h3>Inline notes</h3>
+                  <button className="btn sm ghost" onClick={() => setEditOpen(true)}>
                     <Icons.Edit /> Edit
                   </button>
-                )}
+                </div>
+                <div className="card-body">
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{deal.notes}</p>
+                </div>
               </div>
-              <div className="card-body">
-                {notesDraft !== null ? (
-                  <textarea
-                    className="input"
-                    rows={4}
-                    value={notesDraft}
-                    onChange={e => setNotesDraft(e.target.value)}
-                    style={{ resize: 'vertical', fontFamily: 'inherit' }}
-                  />
-                ) : (
-                  <p style={{
-                    margin: 0, fontSize: 13, color: deal.notes ? 'var(--ink-2)' : 'var(--ink-4)',
-                    lineHeight: 1.6, whiteSpace: 'pre-wrap',
-                  }}>{deal.notes || 'No notes.'}</p>
-                )}
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -263,7 +328,9 @@ export default function DealDetailPage() {
           </div>
           {commissions.length === 0 ? (
             <div className="card-body" style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>
-              {deal.status === 'FUNDS_TRANSFERRED' ? 'No commissions recorded.' : 'Commissions are calculated when the deal is marked as funded.'}
+              {deal.status === 'FUNDS_TRANSFERRED'
+                ? 'No commissions recorded. The funder may be missing an active commission rule.'
+                : 'Commissions are calculated when the deal is marked as funded.'}
             </div>
           ) : (
             <div className="table-wrap">
@@ -305,6 +372,133 @@ export default function DealDetailPage() {
         </div>
       )}
 
+      {tab === 'Notes' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 760 }}>
+          <div className="card">
+            <div className="card-head"><h3>Add a note</h3></div>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <textarea
+                className="input"
+                rows={3}
+                value={noteDraft}
+                onChange={e => setNoteDraft(e.target.value)}
+                placeholder="Add a note, call log, or update… (Ctrl+Enter to save)"
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) addNote() }}
+                style={{ resize: 'vertical', fontFamily: 'inherit' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>{noteDraft.length} characters</span>
+                <button className="btn sm primary" onClick={addNote} disabled={!noteDraft.trim() || noteSaving}>
+                  {noteSaving ? 'Adding…' : 'Add note'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <h3>Notes <span className="badge" style={{ marginLeft: 4 }}>{notes.length}</span></h3>
+            </div>
+            <div className="card-body flush">
+              {notes.length === 0 ? (
+                <div style={{ padding: '40px 18px', textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>
+                  No notes yet — add the first one above.
+                </div>
+              ) : notes.map((n, i) => {
+                const author = n.profiles?.name ?? '—'
+                const hue = (n.created_by.charCodeAt(0) * 47) % 360
+                return (
+                  <div key={n.id} style={{
+                    display: 'flex', gap: 12,
+                    padding: '14px 18px',
+                    borderBottom: i < notes.length - 1 ? '1px solid var(--line)' : 'none',
+                  }}>
+                    <Avatar name={author} hue={hue} size="md" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                        <div>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{author}</span>
+                          <span style={{ fontSize: 11, color: 'var(--ink-4)', marginLeft: 8 }}>
+                            {fmt.dateTime(n.created_at)} · {fmt.relTime(n.created_at)}
+                          </span>
+                        </div>
+                        <button
+                          className="btn sm ghost"
+                          onClick={() => removeNote(n.id)}
+                          style={{ padding: '2px 6px', color: 'var(--ink-4)' }}
+                          aria-label="Remove note"
+                        >
+                          <Icons.Trash style={{ width: 12, height: 12 }} />
+                        </button>
+                      </div>
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{n.body}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'Timeline' && (
+        <div className="card" style={{ maxWidth: 760 }}>
+          <div className="card-head">
+            <h3>Activity</h3>
+            <div className="sub">Full history of changes, status updates, notes, and commissions</div>
+          </div>
+          <div className="card-body flush">
+            {timelineLoading ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>Loading…</div>
+            ) : (() => {
+              const audits = timeline?.audits ?? []
+              const tlNotes = timeline?.notes ?? []
+              type Item = { id: string; ts: string; kind: 'audit' | 'note'; audit?: DbAuditLog; note?: DbDealNote }
+              const items: Item[] = [
+                ...audits.map(a => ({ id: 'a-' + a.id, ts: a.created_at, kind: 'audit' as const, audit: a })),
+                ...tlNotes.map(n => ({ id: 'n-' + n.id, ts: n.created_at, kind: 'note' as const, note: n })),
+              ].sort((a, b) => b.ts.localeCompare(a.ts))
+
+              if (items.length === 0) return (
+                <div style={{ padding: '40px 18px', textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>
+                  No activity recorded yet.
+                </div>
+              )
+
+              return items.map((it, i) => {
+                const last = i === items.length - 1
+                if (it.kind === 'note' && it.note) {
+                  const author = it.note.profiles?.name ?? '—'
+                  return (
+                    <TimelineRow
+                      key={it.id} last={last} accent="accent" Icon={Icons.Edit}
+                      title={`Note by ${author}`}
+                      ts={it.ts}
+                      body={it.note.body}
+                    />
+                  )
+                }
+                if (it.kind === 'audit' && it.audit) {
+                  const a = it.audit
+                  const Icon = auditIcon(a.action)
+                  return (
+                    <TimelineRow
+                      key={it.id} last={last}
+                      accent={a.action === 'DELETE' ? 'neg' : a.action === 'STATUS_CHANGE' ? 'pos' : 'default'}
+                      Icon={Icon}
+                      title={auditLabel(a)}
+                      ts={a.created_at}
+                      author={a.profiles?.name}
+                    />
+                  )
+                }
+                return null
+              })
+            })()}
+          </div>
+        </div>
+      )}
+
       {tab === 'Contacts' && (
         <div className="card">
           <div className="card-head">
@@ -323,9 +517,7 @@ export default function DealDetailPage() {
           ) : (
             <div className="table-wrap">
               <table className="tbl">
-                <thead>
-                  <tr><th>Name</th><th>Email</th><th>Phone</th></tr>
-                </thead>
+                <thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead>
                 <tbody>
                   {contactsList.map((c: any) => (
                     <tr key={c.id}>
@@ -346,12 +538,62 @@ export default function DealDetailPage() {
         </div>
       )}
 
-      <DealStatusModal
-        open={statusOpen}
-        onClose={() => setStatusOpen(false)}
-        deal={deal}
-        onDone={refresh}
+      <DealStatusModal open={statusOpen} onClose={() => setStatusOpen(false)} deal={deal} onDone={refresh} />
+      <EditDealModal   open={editOpen}   onClose={() => setEditOpen(false)}   deal={deal} onDone={refresh} />
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDeleteDeal}
+        title="Delete deal?"
+        message={`Permanently delete this deal? This will also remove its agent assignments and any commission records. This cannot be undone.`}
+        confirmLabel="Delete deal"
+        tone="danger"
       />
+    </div>
+  )
+}
+
+function TimelineRow({
+  last, accent, Icon, title, ts, author, body,
+}: {
+  last: boolean
+  accent: 'pos' | 'neg' | 'accent' | 'default'
+  Icon: React.FC<React.SVGProps<SVGSVGElement>>
+  title: string
+  ts: string
+  author?: string
+  body?: string
+}) {
+  const bg = {
+    pos:     'var(--pos)',
+    neg:     'var(--neg)',
+    accent:  'var(--accent)',
+    default: 'var(--bg-sunk)',
+  }[accent]
+  const fg = accent === 'default' ? 'var(--ink-3)' : '#fff'
+
+  return (
+    <div style={{ padding: '14px 18px', borderBottom: last ? 'none' : '1px solid var(--line)', display: 'flex', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%',
+          background: bg, color: fg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon style={{ width: 12, height: 12 }} />
+        </div>
+        {!last && <div style={{ width: 1, flex: 1, background: 'var(--line)', minHeight: 16 }} />}
+      </div>
+      <div style={{ flex: 1, paddingTop: 4 }}>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>{title}</div>
+        <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2, display: 'flex', gap: 8 }}>
+          <span>{fmt.dateTime(ts)}</span>
+          {author && <><span>·</span><span>{author}</span></>}
+        </div>
+        {body && (
+          <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{body}</p>
+        )}
+      </div>
     </div>
   )
 }
