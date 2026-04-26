@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react'
 import { Icons } from '@/lib/icons'
 
 type ToastTone = 'success' | 'error' | 'info' | 'warn'
@@ -42,13 +42,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     if (duration > 0) setTimeout(() => dismiss(id), duration)
   }, [dismiss])
 
-  const api: ToastApi = {
+  const api = useMemo<ToastApi>(() => ({
     show,
     success: (title, body) => show({ tone: 'success', title, body }),
     error:   (title, body) => show({ tone: 'error',   title, body, duration: 6000 }),
     info:    (title, body) => show({ tone: 'info',    title, body }),
     warn:    (title, body) => show({ tone: 'warn',    title, body, duration: 6000 }),
-  }
+  }), [show])
 
   return (
     <Ctx.Provider value={api}>
