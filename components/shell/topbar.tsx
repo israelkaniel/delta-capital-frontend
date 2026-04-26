@@ -15,6 +15,8 @@ const crumbs: Record<string, string[]> = {
   '/monthly':     ['Workspace', 'Monthly Summaries'],
   '/rules':       ['Workspace', 'Commission Rules'],
   '/reports':     ['Workspace', 'Reports'],
+  '/payout':      ['Workspace', 'Payout'],
+  '/email-logs':  ['Workspace', 'Email Logs'],
   '/settings':    ['Workspace', 'Settings'],
 }
 

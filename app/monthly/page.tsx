@@ -1,8 +1,11 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, type DbMonthlySummary } from '@/lib/api'
+import { invalidate } from '@/lib/queries'
+import { PaymentFormModal } from '@/components/payments/payment-form-modal'
 
 export default function MonthlyPage() {
   const now   = new Date()
@@ -12,6 +15,8 @@ export default function MonthlyPage() {
   const [loading, setLoading] = useState(true)
   const [closing, setClosing] = useState(false)
   const [closeError, setCloseError] = useState<string | null>(null)
+  const [payModal, setPayModal] = useState<{ summary: DbMonthlySummary } | null>(null)
+  const qc = useQueryClient()
 
   const refresh = useCallback(() => {
     setLoading(true)
@@ -120,6 +125,7 @@ export default function MonthlyPage() {
                   <th className="num">Reserved</th><th className="num">Released</th>
                   <th className="num">Reversed</th><th className="num">Paid</th>
                   <th className="num">Closing</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -133,6 +139,13 @@ export default function MonthlyPage() {
                     <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(Number(s.total_reversed))}</td>
                     <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(Number(s.total_paid))}</td>
                     <td className="num" style={{ fontWeight: 700 }}>{fmt.money(Number(s.closing_balance ?? s.balance))}</td>
+                    <td>
+                      {data?.closed && s.id && (
+                        <button className="btn sm primary" onClick={() => setPayModal({ summary: s })}>
+                          Create payment
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 <tr style={{ borderTop: '2px solid var(--line)', fontWeight: 700 }}>
@@ -144,12 +157,24 @@ export default function MonthlyPage() {
                   <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(totals.reversed)}</td>
                   <td className="num" style={{ color: 'var(--neg)' }}>{fmt.money(totals.paid)}</td>
                   <td className="num">{fmt.money(totals.balance)}</td>
+                  <td></td>
                 </tr>
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {payModal && payModal.summary.id && (
+        <PaymentFormModal
+          open
+          onClose={() => setPayModal(null)}
+          lockAgentId={payModal.summary.agent_id}
+          monthlySummaryId={payModal.summary.id}
+          monthlySummaryLabel={`${MONTHS[month - 1]} ${year} summary`}
+          onDone={() => { invalidate.payments(qc); refresh() }}
+        />
+      )}
     </div>
   )
 }

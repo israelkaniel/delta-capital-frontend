@@ -86,16 +86,59 @@ export interface DbLedgerResponse {
   balances: DbAgentBalances
 }
 
+export type PaymentType   = 'bank_transfer' | 'check' | 'cash' | 'other'
+export type PaymentStatus = 'pending' | 'paid' | 'cancelled'
+
 export interface DbPayment {
-  id: string; agent_id: string; amount: number; payment_date: string
-  reference?: string; notes?: string; created_at: string
+  id: string
+  agent_id: string
+  amount: number
+  payment_type: PaymentType
+  status: PaymentStatus
+  reference_number?: string | null
+  payment_date?: string | null
+  notes?: string | null
+  monthly_summary_id?: string | null
+  created_at: string
+  updated_at: string
+  agents?: { id: string; code: string | null; profiles?: { name: string | null } | null }
+}
+
+export interface AgentSummaryAvailable {
+  total_available: number
+  summaries: { id: string; close_month: number; close_year: number; available: number }[]
+}
+
+export type EmailLogStatus =
+  | 'queued' | 'sent' | 'delivered' | 'delayed'
+  | 'bounced' | 'complained' | 'opened' | 'clicked' | 'failed'
+
+export type EmailLogEvent =
+  | 'payment_recorded' | 'commission_earned' | 'commission_reserved'
+  | 'commission_released' | 'monthly_summary'
+
+export interface DbEmailLog {
+  id: string
+  resend_id: string | null
+  event: EmailLogEvent | string
+  to_email: string
+  subject: string
+  agent_id: string | null
+  related_id: string | null
+  status: EmailLogStatus | string
+  status_at: string
+  error: string | null
+  created_at: string
+  agents?: { code: string | null; profiles: { name: string | null } | null } | null
 }
 
 export interface DbMonthlySummary {
+  id?: string
   agent_id: string; agent_name?: string; agent_code?: string
   total_earned: number; total_reserved: number; total_released: number
   total_reversed: number; total_paid: number; balance: number
   opening_balance?: number; closing_balance?: number
+  close_month?: number; close_year?: number
 }
 
 export interface DbMonthlyReport {
@@ -195,9 +238,27 @@ export const api = {
 
   // ── Payments ──
   payments: {
-    list: (params?: { agent_id?: string }) => invokeFunction<DbPayment[]>('payments', { params }),
-    create: (body: { agent_id: string; amount: number; payment_date: string; reference?: string; notes?: string }) =>
-      invokeFunction<DbPayment>('payments', { method: 'POST', body }),
+    list: (params?: { agent_id?: string; status?: PaymentStatus; from?: string; to?: string }) =>
+      invokeFunction<DbPayment[]>('payments', { params }),
+    create: (body: {
+      agent_id: string
+      amount: number
+      payment_type: PaymentType
+      status: PaymentStatus
+      reference_number?: string
+      payment_date?: string
+      notes?: string
+      monthly_summary_id?: string
+    }) => invokeFunction<DbPayment>('payments', { method: 'POST', body }),
+    update: (id: string, body: Partial<{
+      amount: number
+      payment_type: PaymentType
+      status: PaymentStatus
+      reference_number: string | null
+      payment_date: string | null
+      notes: string | null
+      monthly_summary_id: string | null
+    }>) => invokeFunction<DbPayment>(`payments/${id}`, { method: 'PATCH', body }),
   },
 
   // ── Funders ──

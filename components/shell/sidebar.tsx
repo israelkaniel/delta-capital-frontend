@@ -26,6 +26,7 @@ const groups: NavGroup[] = [
   { label: 'Pipeline', items: [
     { k: '/deals',       label: 'Deals',            Icon: Icons.Deal,     countKey: 'deals' },
     { k: '/commissions', label: 'Commissions',       Icon: Icons.Coin,     countKey: 'commissions' },
+    { k: '/payout',      label: 'Payout',            Icon: Icons.Bank },
     { k: '/ledger',      label: 'Ledger',            Icon: Icons.Ledger,   countKey: 'agents' },
     { k: '/monthly',     label: 'Monthly Summaries', Icon: Icons.Calendar },
   ]},
@@ -36,8 +37,9 @@ const groups: NavGroup[] = [
     { k: '/funders',  label: 'Funders',  Icon: Icons.Bank,   countKey: 'funders' },
   ]},
   { label: 'System', items: [
-    { k: '/rules',    label: 'Commission Rules', Icon: Icons.Sparkles },
-    { k: '/settings', label: 'Settings',         Icon: Icons.Settings },
+    { k: '/rules',       label: 'Commission Rules', Icon: Icons.Sparkles },
+    { k: '/email-logs',  label: 'Email Logs',       Icon: Icons.Folder },
+    { k: '/settings',    label: 'Settings',         Icon: Icons.Settings },
   ]},
 ]
 

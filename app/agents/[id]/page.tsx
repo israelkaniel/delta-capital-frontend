@@ -6,9 +6,15 @@ import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, commStatusLabel, type DbAgent } from '@/lib/api'
-import { useAgentDashboard, invalidate, qk } from '@/lib/queries'
+import { useAgentDashboard, useEmailLogsList, usePaymentsList, invalidate, qk } from '@/lib/queries'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
+import { EmailLogPanel } from '@/components/email/email-log-panel'
+import { PaymentsPanel } from '@/components/payments/payments-panel'
+import { PaymentFormModal } from '@/components/payments/payment-form-modal'
+
+const TABS = ['Overview', 'Payments', 'Emails'] as const
+type Tab = typeof TABS[number]
 
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -27,6 +33,11 @@ export default function AgentDetailPage() {
     qc.invalidateQueries({ queryKey: qk.page.agentDashboard(id) })
   }
   const [savingActive, setSavingActive] = useState(false)
+  const [tab, setTab] = useState<Tab>('Overview')
+  const [payModalOpen, setPayModalOpen] = useState(false)
+
+  const emailsQ   = useEmailLogsList({ agent_id: id })
+  const paymentsQ = usePaymentsList({ agent_id: id })
 
   const totalVolume = useMemo(
     () => deals.reduce((s: number, d: any) => s + Number(d.transferred_amount ?? 0), 0),
@@ -120,6 +131,62 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
+      <div className="tabs" style={{ marginBottom: 20 }}>
+        {TABS.map(t => {
+          const badge =
+            t === 'Emails'   ? emailsQ.data?.length :
+            t === 'Payments' ? paymentsQ.data?.length :
+            undefined
+          return (
+            <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+              {t}{badge != null && badge > 0 && <span className="badge" style={{ marginLeft: 6 }}>{badge}</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {tab === 'Payments' && (
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <h3>Payments</h3>
+              <div className="sub">All payments recorded for this agent</div>
+            </div>
+            <button className="btn sm primary" onClick={() => setPayModalOpen(true)}>
+              <Icons.Plus /> New payment
+            </button>
+          </div>
+          <div className="card-body flush" style={{ padding: 0 }}>
+            <PaymentsPanel
+              payments={paymentsQ.data ?? []}
+              loading={paymentsQ.isLoading}
+              error={paymentsQ.error ? (paymentsQ.error as Error).message : null}
+              emptyMessage="No payments recorded for this agent yet."
+            />
+          </div>
+        </div>
+      )}
+
+      {tab === 'Emails' && (
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <h3>Emails sent to this agent</h3>
+              <div className="sub">All notifications dispatched via the notify pipeline</div>
+            </div>
+          </div>
+          <div className="card-body flush">
+            <EmailLogPanel
+              logs={emailsQ.data ?? []}
+              loading={emailsQ.isLoading}
+              error={emailsQ.error ? (emailsQ.error as Error).message : null}
+              emptyMessage="No emails have been sent to this agent yet."
+            />
+          </div>
+        </div>
+      )}
+
+      {tab === 'Overview' && (
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
         <div className="card">
           <div className="card-head">
@@ -215,6 +282,19 @@ export default function AgentDetailPage() {
           </div>
         </div>
       </div>
+      )}
+
+      {payModalOpen && (
+        <PaymentFormModal
+          open
+          onClose={() => setPayModalOpen(false)}
+          lockAgentId={id}
+          onDone={() => {
+            invalidate.payments(qc)
+            qc.invalidateQueries({ queryKey: qk.page.agentDashboard(id) })
+          }}
+        />
+      )}
     </div>
   )
 }

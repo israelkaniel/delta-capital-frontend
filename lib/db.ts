@@ -11,7 +11,8 @@
 import { createClient } from './supabase/client'
 import type {
   DbDeal, DbCommission, DbAgent, DbAccount, DbContact, DbFunder, DbPayment,
-  DbCommissionReserve, DbDealAgent, DbGlobalRule, DbAgentRule,
+  DbCommissionReserve, DbDealAgent, DbGlobalRule, DbAgentRule, DbEmailLog,
+  DbAuditLog,
 } from './api'
 
 const supabase = createClient()
@@ -165,12 +166,84 @@ export const dbFunders = {
 
 // ─── Payments ──────────────────────────────────────────────────────────────
 export const dbPayments = {
-  list: (params?: { agent_id?: string }) => {
+  list: (params?: { agent_id?: string; status?: string; from?: string; to?: string }) => {
     let q = supabase.from('payments')
-      .select('*, agents(*, profiles:user_id(name))')
-      .order('payment_date', { ascending: false })
+      .select('*, agents(id, code, profiles:user_id(name))')
+      .order('created_at', { ascending: false })
     if (params?.agent_id) q = q.eq('agent_id', params.agent_id)
+    if (params?.status)   q = q.eq('status', params.status)
+    if (params?.from)     q = q.gte('created_at', params.from)
+    if (params?.to)       q = q.lte('created_at', params.to)
     return wrap<DbPayment[]>(q.limit(LIST_CAP))
+  },
+  agentSummaryAvailable: (agentId: string) =>
+    wrap<{ total_available: number; summaries: { id: string; close_month: number; close_year: number; available: number }[] }>(
+      supabase.rpc('agent_summary_available', { p_agent_id: agentId }),
+    ),
+  monthlySummaryAvailable: (summaryId: string) =>
+    wrap<number>(
+      supabase.rpc('monthly_summary_available', { p_summary_id: summaryId }),
+    ),
+}
+
+// ─── Email logs (Resend integration) ───────────────────────────────────────
+const emailLogListSelect = `
+  id, resend_id, event, to_email, subject, agent_id, related_id,
+  status, status_at, error, created_at,
+  agents(code, profiles:user_id(name))
+`
+
+export const dbEmailLogs = {
+  list: (params?: { event?: string; status?: string; agent_id?: string }) => {
+    let q = supabase.from('email_logs').select(emailLogListSelect)
+      .order('created_at', { ascending: false })
+    if (params?.event)    q = q.eq('event', params.event)
+    if (params?.status)   q = q.eq('status', params.status)
+    if (params?.agent_id) q = q.eq('agent_id', params.agent_id)
+    return wrap<DbEmailLog[]>(q.limit(LIST_CAP))
+  },
+  listByRelatedIds: (relatedIds: string[]) => {
+    if (relatedIds.length === 0) return Promise.resolve({ data: [] as DbEmailLog[], error: null })
+    return wrap<DbEmailLog[]>(
+      supabase.from('email_logs').select(emailLogListSelect)
+        .in('related_id', relatedIds)
+        .order('created_at', { ascending: false })
+        .limit(LIST_CAP),
+    )
+  },
+}
+
+// ─── Audit logs (admin/finance only via RLS) ───────────────────────────────
+const auditLogSelect = `
+  id, entity, entity_id, action, prev_value, new_value,
+  user_id, created_at, notes,
+  profiles:user_id(name)
+`
+
+export const dbAuditLogs = {
+  listByEntityIds: (entity: string, entityIds: string[]) => {
+    if (entityIds.length === 0) return Promise.resolve({ data: [] as DbAuditLog[], error: null })
+    return wrap<DbAuditLog[]>(
+      supabase.from('audit_logs').select(auditLogSelect)
+        .eq('entity', entity)
+        .in('entity_id', entityIds)
+        .order('created_at', { ascending: false })
+        .limit(LIST_CAP),
+    )
+  },
+  /** Fetch audits for two related entity types in one round-trip via .or().
+   *  Used by commission detail (commissions + commission_reserves). */
+  listForCommissionScope: (commissionId: string, reserveIds: string[]) => {
+    const filters = [`and(entity.eq.commissions,entity_id.eq.${commissionId})`]
+    if (reserveIds.length > 0) {
+      filters.push(`and(entity.eq.commission_reserves,entity_id.in.(${reserveIds.join(',')}))`)
+    }
+    return wrap<DbAuditLog[]>(
+      supabase.from('audit_logs').select(auditLogSelect)
+        .or(filters.join(','))
+        .order('created_at', { ascending: false })
+        .limit(LIST_CAP),
+    )
   },
 }
 

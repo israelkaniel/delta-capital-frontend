@@ -6,7 +6,7 @@ import { fmt } from '@/lib/fmt'
 import { usePayoutSummary, qk } from '@/lib/queries'
 import { Avatar } from '@/components/ui/avatar'
 import { Pill } from '@/components/ui/pill'
-import { RecordPaymentModal } from '@/components/payout/record-payment-modal'
+import { PaymentFormModal } from '@/components/payments/payment-form-modal'
 
 type Row = {
   agent: { id: string; code: string | null; is_active: boolean; name: string; email: string | null }
@@ -40,7 +40,7 @@ export default function PayoutPage() {
   }, [summary])
 
   const payments = summary?.payments ?? []
-  const [modal, setModal] = useState<Row | null>(null)
+  const [modal, setModal] = useState<{ agentId?: string } | null>(null)
 
   const totals = useMemo(() => {
     return rows.reduce((acc, r) => ({
@@ -85,6 +85,9 @@ export default function PayoutPage() {
         <div className="actions">
           <button className="btn" onClick={exportCsv} disabled={rows.length === 0}>
             <Icons.Download /> Export CSV
+          </button>
+          <button className="btn primary" onClick={() => setModal({})}>
+            <Icons.Plus /> New payment
           </button>
         </div>
       </div>
@@ -177,7 +180,7 @@ export default function PayoutPage() {
                     </td>
                     <td>
                       {available > 0 ? (
-                        <button className="btn sm primary" onClick={() => setModal(row)}>Pay</button>
+                        <button className="btn sm primary" onClick={() => setModal({ agentId: row.agent.id })}>Pay</button>
                       ) : (
                         <Pill tone="default">Settled</Pill>
                       )}
@@ -242,12 +245,10 @@ export default function PayoutPage() {
       )}
 
       {modal && (
-        <RecordPaymentModal
+        <PaymentFormModal
           open
           onClose={() => setModal(null)}
-          agentId={modal.agent.id}
-          agentName={modal.agent.name ?? modal.agent.code ?? 'Agent'}
-          suggestedAmount={Number(modal.balances.available_balance)}
+          lockAgentId={modal.agentId}
           onDone={refresh}
         />
       )}

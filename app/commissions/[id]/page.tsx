@@ -1,17 +1,58 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { commStatusLabel, type DbCommission, type DbCommissionReserve } from '@/lib/api'
-import { useCommission, invalidate, qk } from '@/lib/queries'
+import { commStatusLabel, type DbCommission, type DbCommissionReserve, type DbAuditLog } from '@/lib/api'
+import {
+  useCommission, useEmailLogsByRelatedIds, useCommissionScopeAudits,
+  invalidate, qk,
+} from '@/lib/queries'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
+import { TimelineRow, type TimelineRowAccent } from '@/components/ui/timeline-row'
 import { ReserveModal } from '@/components/commissions/reserve-modal'
+import { EmailLogPanel, emailToTimelineItem } from '@/components/email/email-log-panel'
 
 type Mode = 'reserve' | 'release' | 'reverse'
+
+const TABS = ['Overview', 'Timeline', 'Emails'] as const
+type Tab = typeof TABS[number]
+
+const auditIcon = (action: string): React.FC<React.SVGProps<SVGSVGElement>> => {
+  if (action === 'CREATE')   return Icons.Plus
+  if (action === 'UPDATE')   return Icons.Edit
+  if (action === 'RELEASE')  return Icons.Check
+  if (action === 'REVERSE')  return Icons.X
+  if (action === 'DELETE')   return Icons.Trash
+  return Icons.Clock
+}
+
+const auditLabel = (a: DbAuditLog): string => {
+  if (a.entity === 'commissions' && a.action === 'CREATE') {
+    const total = (a.new_value as any)?.total_amount
+    return total != null ? `Commission earned (${fmt.money(Number(total))})` : 'Commission created'
+  }
+  if (a.entity === 'commission_reserves' && a.action === 'CREATE') {
+    const amt = (a.new_value as any)?.amount
+    return amt != null ? `Placed ${fmt.money(Number(amt))} in reserve` : 'Reserve placed'
+  }
+  if (a.entity === 'commission_reserves' && a.action === 'RELEASE') return 'Reserve released'
+  if (a.entity === 'commission_reserves' && a.action === 'REVERSE') {
+    const amt = (a.new_value as any)?.amount
+    return amt != null ? `Reserve reversed (${fmt.money(Number(amt))} permanently deducted)` : 'Reserve reversed'
+  }
+  return `${a.entity} · ${a.action}`
+}
+
+const auditAccent = (a: DbAuditLog): TimelineRowAccent => {
+  if (a.action === 'RELEASE') return 'pos'
+  if (a.action === 'REVERSE') return 'neg'
+  if (a.action === 'CREATE')  return 'accent'
+  return 'default'
+}
 
 const reserveStatusTone = (s: string): 'warn' | 'pos' | 'neg' | 'default' =>
   s === 'HELD' ? 'warn' : s === 'RELEASED' ? 'pos' : s === 'REVERSED' ? 'neg' : 'default'
@@ -28,6 +69,19 @@ export default function CommissionDetailPage() {
   const fetchCommission = () => qc.invalidateQueries({ queryKey: qk.commissions.detail(id) })
 
   const [modal, setModal] = useState<{ mode: Mode; reserve?: DbCommissionReserve } | null>(null)
+  const [tab, setTab] = useState<Tab>('Overview')
+
+  const reserveIds = useMemo(
+    () => (commission?.commission_reserves ?? []).map(r => r.id),
+    [commission],
+  )
+  const relatedIds = useMemo(
+    () => commission ? [commission.id, ...reserveIds] : [],
+    [commission, reserveIds],
+  )
+
+  const emailsQ = useEmailLogsByRelatedIds(relatedIds, tab !== 'Overview' && relatedIds.length > 0)
+  const auditsQ = useCommissionScopeAudits(commission?.id ?? '', reserveIds, tab === 'Timeline')
 
   if (loading) return (
     <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>
@@ -129,6 +183,102 @@ export default function CommissionDetailPage() {
         </div>
       </div>
 
+      <div className="tabs" style={{ marginBottom: 20 }}>
+        {TABS.map(t => {
+          const badge = t === 'Emails' ? emailsQ.data?.length : undefined
+          return (
+            <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+              {t}{badge != null && badge > 0 && <span className="badge" style={{ marginLeft: 6 }}>{badge}</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {tab === 'Emails' && (
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <h3>Emails</h3>
+              <div className="sub">Notifications sent for this commission and its reserves</div>
+            </div>
+          </div>
+          <div className="card-body flush">
+            <EmailLogPanel
+              logs={emailsQ.data ?? []}
+              loading={emailsQ.isLoading}
+              error={emailsQ.error ? (emailsQ.error as Error).message : null}
+              emptyMessage="No emails sent for this commission yet."
+            />
+          </div>
+        </div>
+      )}
+
+      {tab === 'Timeline' && (
+        <div className="card" style={{ maxWidth: 760 }}>
+          <div className="card-head">
+            <h3>Activity</h3>
+            <div className="sub">Audit events and email notifications for this commission</div>
+          </div>
+          <div className="card-body flush">
+            {(auditsQ.isLoading || emailsQ.isLoading) ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>Loading…</div>
+            ) : (() => {
+              const audits = auditsQ.data ?? []
+              const emails = emailsQ.data ?? []
+              type Item = {
+                id: string; ts: string; kind: 'audit' | 'email'
+                audit?: DbAuditLog; emailItem?: ReturnType<typeof emailToTimelineItem>
+              }
+              const items: Item[] = [
+                ...audits.map(a => ({ id: 'a-' + a.id, ts: a.created_at, kind: 'audit' as const, audit: a })),
+                ...emails.map(e => {
+                  const it = emailToTimelineItem(e)
+                  return { id: it.id, ts: it.ts, kind: 'email' as const, emailItem: it }
+                }),
+              ].sort((a, b) => b.ts.localeCompare(a.ts))
+
+              if (items.length === 0) return (
+                <div style={{ padding: '40px 18px', textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>
+                  No activity yet.
+                </div>
+              )
+
+              return items.map((it, i) => {
+                const last = i === items.length - 1
+                if (it.kind === 'audit' && it.audit) {
+                  const a = it.audit
+                  return (
+                    <TimelineRow
+                      key={it.id} last={last}
+                      accent={auditAccent(a)}
+                      Icon={auditIcon(a.action)}
+                      title={auditLabel(a)}
+                      ts={a.created_at}
+                      author={a.profiles?.name}
+                    />
+                  )
+                }
+                if (it.kind === 'email' && it.emailItem) {
+                  const e = it.emailItem
+                  return (
+                    <TimelineRow
+                      key={it.id} last={last}
+                      accent={e.accent}
+                      Icon={Icons.Mail}
+                      title={e.title}
+                      ts={e.ts}
+                      body={e.body}
+                    />
+                  )
+                }
+                return null
+              })
+            })()}
+          </div>
+        </div>
+      )}
+
+      {tab === 'Overview' && (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
         {/* Left: Agent + Reserves */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -262,6 +412,7 @@ export default function CommissionDetailPage() {
           )}
         </div>
       </div>
+      )}
 
       {modal && (
         <ReserveModal

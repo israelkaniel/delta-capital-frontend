@@ -4,7 +4,7 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import {
   dbDeals, dbCommissions, dbAgents, dbAccounts, dbFunders, dbPayments,
-  dbRules, dbNotes, dbRpc,
+  dbRules, dbNotes, dbRpc, dbEmailLogs, dbAuditLogs,
 } from './db'
 import { api } from './api'
 
@@ -40,8 +40,18 @@ export const qk = {
     detail: (id: string) => [...qk.funders.all, 'detail', id] as const,
   },
   payments: {
-    all:  ['payments'] as const,
-    list: (params?: object) => [...qk.payments.all, 'list', params ?? {}] as const,
+    all:        ['payments'] as const,
+    list:       (params?: object) => [...qk.payments.all, 'list', params ?? {}] as const,
+    available:  (agentId: string) => [...qk.payments.all, 'available', agentId] as const,
+  },
+  emailLogs: {
+    all:        ['email-logs'] as const,
+    list:       (params?: object) => [...qk.emailLogs.all, 'list', params ?? {}] as const,
+    byRelated:  (ids: string[]) => [...qk.emailLogs.all, 'by-related', [...ids].sort()] as const,
+  },
+  audit: {
+    commissionScope: (commId: string, reserveIds: string[]) =>
+      ['audit', 'commission-scope', commId, [...reserveIds].sort()] as const,
   },
   rules: {
     all:        ['rules'] as const,
@@ -95,8 +105,39 @@ export const useFundersList = () => useQuery({ queryKey: qk.funders.list(), quer
 export const useFunder      = (id: string) =>
   useQuery({ queryKey: qk.funders.detail(id), queryFn: () => unwrap(dbFunders.get(id)), enabled: !!id })
 
-export const usePaymentsList = (params?: { agent_id?: string }) =>
+export const usePaymentsList = (params?: { agent_id?: string; status?: string; from?: string; to?: string }) =>
   useQuery({ queryKey: qk.payments.list(params), queryFn: () => unwrap(dbPayments.list(params)) })
+
+export const useAgentSummaryAvailable = (agentId: string, enabled = true) =>
+  useQuery({
+    queryKey: qk.payments.available(agentId),
+    queryFn: () => unwrap(dbPayments.agentSummaryAvailable(agentId)),
+    enabled: enabled && !!agentId,
+  })
+
+export const useMonthlySummaryAvailable = (summaryId: string, enabled = true) =>
+  useQuery({
+    queryKey: ['payments', 'summary-available', summaryId] as const,
+    queryFn: () => unwrap(dbPayments.monthlySummaryAvailable(summaryId)),
+    enabled: enabled && !!summaryId,
+  })
+
+export const useEmailLogsList = (params?: { event?: string; status?: string; agent_id?: string }) =>
+  useQuery({ queryKey: qk.emailLogs.list(params), queryFn: () => unwrap(dbEmailLogs.list(params)) })
+
+export const useEmailLogsByRelatedIds = (ids: string[], enabled = true) =>
+  useQuery({
+    queryKey: qk.emailLogs.byRelated(ids),
+    queryFn: () => unwrap(dbEmailLogs.listByRelatedIds(ids)),
+    enabled: enabled && ids.length > 0,
+  })
+
+export const useCommissionScopeAudits = (commissionId: string, reserveIds: string[], enabled = true) =>
+  useQuery({
+    queryKey: qk.audit.commissionScope(commissionId, reserveIds),
+    queryFn: () => unwrap(dbAuditLogs.listForCommissionScope(commissionId, reserveIds)),
+    enabled: enabled && !!commissionId,
+  })
 
 export const useGlobalRules = (funderId?: string) =>
   useQuery({ queryKey: qk.rules.globalList(funderId), queryFn: () => unwrap(dbRules.globalList({ funder_id: funderId })) })
@@ -186,6 +227,10 @@ export const invalidate = {
   agents:      (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.agents.all }),
   accounts:    (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.accounts.all }),
   funders:     (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.funders.all }),
-  payments:    (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.payments.all }),
+  payments:    (qc: QueryClient) => {
+    qc.invalidateQueries({ queryKey: qk.payments.all })
+    qc.invalidateQueries({ queryKey: qk.page.payout() })
+  },
+  emailLogs:   (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.emailLogs.all }),
   rules:       (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.rules.all }),
 }
