@@ -43,6 +43,9 @@ export interface DbDeal {
   transferred_amount: number | null; payback_amount: number | null
   funds_transferred_at: string | null; external_id: string | null; notes?: string
   created_at: string; updated_at: string
+  created_by?: string | null; updated_by?: string | null
+  creator?: { id: string; name: string } | null
+  updater?: { id: string; name: string } | null
   accounts?: DbAccount
   funders?: DbFunder
   deal_agents?: (DbDealAgent & { agents?: DbAgent })[]
@@ -154,6 +157,10 @@ export const api = {
       invokeFunction<DbDeal>(`loans/${id}`, { method: 'PATCH', body }),
     delete: (id: string) =>
       invokeFunction<{ success: boolean }>(`loans/${id}`, { method: 'DELETE' }),
+    bulkDelete: (ids: string[]) =>
+      invokeFunction<{ deleted: number }>('loans/bulk-delete', { method: 'POST', body: { ids } }),
+    setAgents: (id: string, agents: { agent_id: string; share: number }[]) =>
+      invokeFunction<{ success: boolean; count: number }>(`loans/${id}/agents`, { method: 'PUT', body: { agents } }),
     notes: {
       list: (dealId: string) =>
         invokeFunction<DbDealNote[]>(`loans/${dealId}/notes`),

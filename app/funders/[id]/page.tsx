@@ -37,11 +37,11 @@ export default function FunderDetailPage() {
   useEffect(() => { refresh() }, [refresh])
 
   if (loading) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading funder…</div>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading funder…</div>
   )
 
   if (error || !funder) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center' }}>
       <p style={{ color: 'var(--ink-4)' }}>{error ?? 'Funder not found.'}</p>
       <Link href="/funders" className="btn sm" style={{ marginTop: 12, display: 'inline-flex' }}>Back to funders</Link>
     </div>
@@ -51,7 +51,7 @@ export default function FunderDetailPage() {
   const hue = hueFromId(funder.id)
 
   return (
-    <div className="page" style={{ padding: '20px 28px 80px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 80px' }}>
       <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Link href="/funders" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>Funders</Link>
         <span>/</span>

@@ -57,7 +57,7 @@ export default function MonthlyPage() {
   ]
 
   return (
-    <div className="page" style={{ padding: '20px 28px 80px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 80px' }}>
       <div className="page-head">
         <div>
           <h1>Monthly</h1>

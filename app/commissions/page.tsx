@@ -49,7 +49,7 @@ export default function CommissionsPage() {
   const totalValue = filtered.reduce((a, c) => a + Number(c.total_amount), 0)
 
   return (
-    <div className="page" style={{ padding: '20px 28px 80px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 80px' }}>
       <div className="page-head">
         <div>
           <h1>Commissions</h1>

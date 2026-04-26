@@ -123,6 +123,8 @@ export default function DealsPage() {
   const [filters, setFilters] = useState<FilterState>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState<DbDeal | null>(null)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [view, setView] = useState<'table' | 'tiles'>('table')
 
   const refresh = useCallback(() => {
     setLoading(true)
@@ -222,6 +224,20 @@ export default function DealsPage() {
     refresh()
   }
 
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    const res = await api.deals.bulkDelete(ids)
+    if (res.error) {
+      toast.error('Bulk delete failed', res.error.message)
+      return
+    }
+    toast.success(`${res.data?.deleted ?? ids.length} deals deleted`)
+    setSelected(new Set())
+    setConfirmBulkDelete(false)
+    refresh()
+  }
+
   const canDelete = role === 'ADMIN'
 
   return (
@@ -232,6 +248,10 @@ export default function DealsPage() {
           <p>{loading ? 'Loading…' : `${stats.active} active · ${stats.pending} pending · ${fmt.moneyK(stats.volume)} active volume`}</p>
         </div>
         <div className="actions">
+          <div className="seg">
+            <button className={view === 'table' ? 'active' : ''} onClick={() => setView('table')} aria-label="Table view"><Icons.Table /></button>
+            <button className={view === 'tiles' ? 'active' : ''} onClick={() => setView('tiles')} aria-label="Tile view"><Icons.Grid /></button>
+          </div>
           <button className="btn" onClick={() => exportCSV(filtered)}>
             <Icons.Download /> Export {filtered.length < deals.length ? `(${filtered.length})` : ''}
           </button>
@@ -317,12 +337,62 @@ export default function DealsPage() {
         <div style={{ margin: '10px 0', padding: '10px 16px', background: 'var(--bg-sunk)', border: '1px solid var(--line)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink-2)' }}>{selected.size} selected</span>
           <button className="btn sm" onClick={() => exportCSV(deals.filter(d => selected.has(d.id)))}><Icons.Download /> Export CSV</button>
+          {canDelete && (
+            <button className="btn sm danger" onClick={() => setConfirmBulkDelete(true)}>
+              <Icons.Trash /> Delete {selected.size}
+            </button>
+          )}
           <div style={{ flex: 1 }} />
           <button className="btn sm ghost" onClick={() => setSelected(new Set())} style={{ color: 'var(--ink-4)' }}><Icons.X /> Clear</button>
         </div>
       )}
 
+      {/* Tiles view */}
+      {!loading && view === 'tiles' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginTop: 12 }}>
+          {filtered.map(d => (
+            <div
+              key={d.id}
+              className="card"
+              style={{ padding: 16, cursor: 'pointer', transition: 'box-shadow 0.15s, transform 0.1s' }}
+              onClick={() => router.push(`/deals/${d.id}`)}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 24px -8px rgba(0,0,0,0.15)' }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = '' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="strong" style={{ fontSize: 14, fontWeight: 600, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dealClient(d)}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-4)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span className="mono" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{d.id.slice(0, 8)}</span>
+                    <span>·</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dealFunder(d)}</span>
+                  </div>
+                </div>
+                <StatusPill status={dealStatusLabel(d.status)} />
+              </div>
+
+              <div className="num" style={{ fontSize: 22, fontWeight: 700, marginBottom: 12, letterSpacing: '-0.02em' }}>
+                {fmt.money(dealAmount(d))}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+                <AvatarStack items={(d.deal_agents ?? []).map(da => ({ name: da.agents?.profiles?.name ?? da.agents?.code ?? '?', hue: 180 }))} />
+                <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
+                  {d.funds_transferred_at ? `Funded ${fmt.dateShort(d.funds_transferred_at)}` : `Created ${fmt.dateShort(d.created_at)}`}
+                </span>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div style={{ gridColumn: '1 / -1', padding: 48, textAlign: 'center', color: 'var(--ink-4)' }}>
+              No deals match your filters.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table */}
+      {(loading || view === 'table') && (
       <div className="card" style={{ marginTop: 12 }}>
         {loading ? (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>Loading deals…</div>
@@ -387,6 +457,7 @@ export default function DealsPage() {
           <span>Volume: <span className="num" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{fmt.money(filtered.reduce((a, d) => a + dealAmount(d), 0))}</span></span>
         </div>
       </div>
+      )}
 
       <ConfirmDialog
         open={confirmDelete !== null}
@@ -394,9 +465,19 @@ export default function DealsPage() {
         onConfirm={handleDelete}
         title="Delete deal?"
         message={confirmDelete
-          ? `Permanently delete ${dealClient(confirmDelete)} · ${confirmDelete.id.slice(0, 8)}? This will also remove its agent assignments and any commission records. This cannot be undone.`
+          ? `Permanently delete ${dealClient(confirmDelete)} · ${confirmDelete.id.slice(0, 8)}?\n\nAlso removed: agent assignments, commission records, reserves, ledger entries, deal notes. This cannot be undone.`
           : ''}
         confirmLabel="Delete deal"
+        tone="danger"
+      />
+
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={handleBulkDelete}
+        title={`Delete ${selected.size} deals?`}
+        message={`Permanently delete the ${selected.size} selected deals?\n\nFor each: agent assignments, commission records, reserves, ledger entries and notes will be removed.\n\nThis cannot be undone.`}
+        confirmLabel={`Delete ${selected.size} deals`}
         tone="danger"
       />
     </div>

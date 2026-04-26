@@ -57,11 +57,11 @@ export default function AgentDetailPage() {
   }
 
   if (loading) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading agent…</div>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading agent…</div>
   )
 
   if (error || !agent) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center' }}>
       <p style={{ color: 'var(--ink-4)' }}>{error ?? 'Agent not found.'}</p>
       <Link href="/agents" className="btn sm" style={{ marginTop: 12, display: 'inline-flex' }}>Back to agents</Link>
     </div>
@@ -75,7 +75,7 @@ export default function AgentDetailPage() {
   const paid = balances ? Number(balances.paid_amount) : 0
 
   return (
-    <div className="page" style={{ padding: '20px 28px 80px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 80px' }}>
       <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Link href="/agents" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>Agents</Link>
         <span>/</span>

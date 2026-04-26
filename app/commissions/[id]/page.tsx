@@ -33,13 +33,13 @@ export default function CommissionDetailPage() {
   useEffect(() => { fetchCommission() }, [fetchCommission])
 
   if (loading) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>
       Loading commission…
     </div>
   )
 
   if (error || !commission) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center' }}>
       <p style={{ color: 'var(--ink-4)' }}>{error ?? 'Commission not found.'}</p>
       <Link href="/commissions" className="btn sm" style={{ marginTop: 12, display: 'inline-flex' }}>
         Back to commissions
@@ -60,7 +60,7 @@ export default function CommissionDetailPage() {
   const canReserve = commission.status !== 'PAID' && commission.status !== 'REVERSED' && available > 0
 
   return (
-    <div className="page" style={{ padding: '20px 28px 100px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 100px' }}>
       <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Link href="/commissions" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>Commissions</Link>
         <span>/</span>

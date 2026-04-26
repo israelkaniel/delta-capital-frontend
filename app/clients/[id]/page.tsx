@@ -9,6 +9,8 @@ import { StatusPill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { ContactEditor } from '@/components/contacts/contact-editor'
 import { ClientEditor } from '@/components/clients/client-editor'
+import { NewDealModal } from '@/components/deals/new-deal-modal'
+import { AuditFooter } from '@/components/ui/audit-footer'
 
 type AccountFull = DbAccount & { contacts?: DbContact[]; deals?: DbDeal[] }
 
@@ -23,6 +25,7 @@ export default function ClientDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [contactModal, setContactModal] = useState<{ editing?: DbContact } | null>(null)
   const [editAccountOpen, setEditAccountOpen] = useState(false)
+  const [newDealOpen, setNewDealOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     const res = await api.accounts.get(id)
@@ -41,13 +44,13 @@ export default function ClientDetailPage() {
   }
 
   if (loading) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>
       Loading client…
     </div>
   )
 
   if (error || !account) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center' }}>
       <p style={{ color: 'var(--ink-4)' }}>{error ?? 'Client not found.'}</p>
       <Link href="/clients" className="btn sm" style={{ marginTop: 12, display: 'inline-flex' }}>Back to clients</Link>
     </div>
@@ -60,7 +63,7 @@ export default function ClientDetailPage() {
   const hue = hueFromId(account.id)
 
   return (
-    <div className="page" style={{ padding: '20px 28px 80px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 80px' }}>
       <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Link href="/clients" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>Clients</Link>
         <span>/</span>
@@ -85,6 +88,9 @@ export default function ClientDetailPage() {
           </div>
         </div>
         <div className="actions">
+          <button className="btn sm primary" onClick={() => setNewDealOpen(true)}>
+            <Icons.Plus style={{ width: 13, height: 13 }} /> New deal
+          </button>
           <button className="btn sm" onClick={() => setEditAccountOpen(true)}>
             <Icons.Edit style={{ width: 13, height: 13 }} /> Edit
           </button>
@@ -223,6 +229,12 @@ export default function ClientDetailPage() {
         onClose={() => setEditAccountOpen(false)}
         onDone={refresh}
         editing={account}
+      />
+
+      <NewDealModal
+        open={newDealOpen}
+        onClose={() => setNewDealOpen(false)}
+        initialAccount={account}
       />
     </div>
   )

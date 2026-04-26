@@ -217,7 +217,13 @@ function DealLivePanel({
 
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
-export function NewDealModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NewDealModal({
+  open, onClose, initialAccount,
+}: {
+  open: boolean
+  onClose: () => void
+  initialAccount?: DbAccount | null
+}) {
   const router = useRouter()
   const toast = useToast()
   const [step, setStep] = useState(0)
@@ -235,7 +241,9 @@ export function NewDealModal({ open, onClose }: { open: boolean; onClose: () => 
   // Reset & load when opened
   useEffect(() => {
     if (!open) return
-    setStep(0); setDraft(EMPTY_DRAFT); setAgentQ('')
+    setStep(initialAccount ? 1 : 0)
+    setDraft({ ...EMPTY_DRAFT, account: initialAccount ?? null })
+    setAgentQ('')
     setNewClientMode(false); setError(null); setFunderRule(null)
     Promise.all([api.accounts.list(), api.funders.list(), api.agents.list()])
       .then(([a, f, ag]) => {
@@ -243,7 +251,7 @@ export function NewDealModal({ open, onClose }: { open: boolean; onClose: () => 
         setFunders((f.data ?? []).filter(x => x.is_active))
         setAgents((ag.data ?? []).filter(x => x.is_active))
       })
-  }, [open])
+  }, [open, initialAccount])
 
   // When funder changes, fetch its active commission rule for the live preview
   useEffect(() => {

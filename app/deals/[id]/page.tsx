@@ -14,7 +14,10 @@ import { useToast } from '@/components/ui/toast/toast'
 import { useUserRole } from '@/lib/use-user-role'
 import { DealStatusModal } from '@/components/deals/status-modal'
 import { EditDealModal } from '@/components/deals/edit-deal-modal'
+import { ManageAgentsModal } from '@/components/deals/manage-agents-modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ActionsMenu, type ActionItem } from '@/components/ui/actions-menu'
+import { AuditFooter } from '@/components/ui/audit-footer'
 
 const TABS = ['Overview', 'Commissions', 'Notes', 'Timeline', 'Contacts'] as const
 type Tab = typeof TABS[number]
@@ -63,6 +66,7 @@ export default function DealDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [statusOpen, setStatusOpen] = useState(false)
   const [editOpen, setEditOpen]     = useState(false)
+  const [agentsOpen, setAgentsOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const [notes, setNotes]     = useState<DbDealNote[]>([])
@@ -175,17 +179,24 @@ export default function DealDetailPage() {
           </div>
         </div>
         <div className="actions">
-          <button className="btn sm" onClick={() => setEditOpen(true)}>
-            <Icons.Edit style={{ width: 13, height: 13 }} /> Edit
-          </button>
           <button className="btn sm primary" onClick={() => setStatusOpen(true)}>
             <Icons.Sparkles style={{ width: 13, height: 13 }} /> Update status
           </button>
-          {canDelete && (
-            <button className="btn sm danger" onClick={() => setConfirmDelete(true)}>
-              <Icons.Trash style={{ width: 13, height: 13 }} /> Delete
-            </button>
-          )}
+          <ActionsMenu
+            label="Actions"
+            items={[
+              { kind: 'item', label: 'Edit deal',      icon: Icons.Edit,    onClick: () => setEditOpen(true) },
+              { kind: 'item', label: 'Manage agents',  icon: Icons.People,  onClick: () => setAgentsOpen(true) },
+              { kind: 'item', label: 'Update status',  icon: Icons.Sparkles, onClick: () => setStatusOpen(true) },
+              { kind: 'sep' },
+              { kind: 'item', label: 'Print',          icon: Icons.Print,   onClick: () => window.print() },
+              { kind: 'item', label: 'Copy link',      icon: Icons.Link,    onClick: () => navigator.clipboard.writeText(window.location.href).then(() => toast.info('Link copied')) },
+              ...(canDelete ? [
+                { kind: 'sep' as const },
+                { kind: 'item' as const, label: 'Delete deal…', icon: Icons.Trash, onClick: () => setConfirmDelete(true), tone: 'danger' as const },
+              ] : []),
+            ] satisfies ActionItem[]}
+          />
           <button className="close-btn" onClick={() => router.push('/deals')}>
             <Icons.X /> Close
           </button>
@@ -265,13 +276,21 @@ export default function DealDetailPage() {
                 })}
               </div>
             </div>
+            <AuditFooter
+              createdAt={deal.created_at}
+              updatedAt={deal.updated_at}
+              createdBy={deal.creator}
+              updatedBy={deal.updater}
+            />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="card">
               <div className="card-head">
                 <h3>Agents <span className="badge" style={{ marginLeft: 4 }}>{dealAgents.length}</span></h3>
-                <Link href="/agents" className="btn sm ghost" style={{ fontSize: 11 }}>View all <Icons.Chevron /></Link>
+                <button className="btn sm ghost" onClick={() => setAgentsOpen(true)}>
+                  <Icons.Plus /> Manage
+                </button>
               </div>
               <div className="card-body flush">
                 {dealAgents.length === 0 ? (
@@ -538,15 +557,16 @@ export default function DealDetailPage() {
         </div>
       )}
 
-      <DealStatusModal open={statusOpen} onClose={() => setStatusOpen(false)} deal={deal} onDone={refresh} />
-      <EditDealModal   open={editOpen}   onClose={() => setEditOpen(false)}   deal={deal} onDone={refresh} />
+      <DealStatusModal open={statusOpen}  onClose={() => setStatusOpen(false)} deal={deal} onDone={refresh} />
+      <EditDealModal    open={editOpen}    onClose={() => setEditOpen(false)}   deal={deal} onDone={refresh} />
+      <ManageAgentsModal open={agentsOpen} onClose={() => setAgentsOpen(false)} deal={deal} onDone={refresh} />
       <ConfirmDialog
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         onConfirm={handleDeleteDeal}
-        title="Delete deal?"
-        message={`Permanently delete this deal? This will also remove its agent assignments and any commission records. This cannot be undone.`}
-        confirmLabel="Delete deal"
+        title="Delete this deal?"
+        message={`Permanently delete this deal?\n\nAlso removed:\n• ${dealAgents.length} agent assignment${dealAgents.length === 1 ? '' : 's'}\n• ${commissions.length} commission record${commissions.length === 1 ? '' : 's'}\n• All reserves, ledger entries, deal notes, and contacts attached\n\nThis cannot be undone.`}
+        confirmLabel="Yes, delete"
         tone="danger"
       />
     </div>

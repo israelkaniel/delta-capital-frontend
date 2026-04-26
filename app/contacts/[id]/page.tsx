@@ -47,11 +47,11 @@ export default function ContactDetailPage() {
   }
 
   if (loading) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading contact…</div>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading contact…</div>
   )
 
   if (!contact) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center' }}>
       <p style={{ color: 'var(--ink-4)' }}>Contact not found.</p>
       <Link href="/contacts" className="btn sm" style={{ marginTop: 12, display: 'inline-flex' }}>Back to contacts</Link>
     </div>
@@ -61,7 +61,7 @@ export default function ContactDetailPage() {
   const accountDeals = (contact.account as any).deals ?? []
 
   return (
-    <div className="page" style={{ padding: '20px 28px 60px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 60px' }}>
       <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Link href="/contacts" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>Contacts</Link>
         <span>/</span>

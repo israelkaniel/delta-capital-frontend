@@ -88,11 +88,11 @@ export default function AgentLedgerPage() {
   }
 
   if (loading) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading ledger…</div>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading ledger…</div>
   )
 
   if (error || !agent) return (
-    <div className="page" style={{ padding: '40px 28px', textAlign: 'center' }}>
+    <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center' }}>
       <p style={{ color: 'var(--ink-4)' }}>{error ?? 'Agent not found.'}</p>
       <Link href="/ledger" className="btn sm" style={{ marginTop: 12, display: 'inline-flex' }}>Back to ledger</Link>
     </div>
@@ -102,7 +102,7 @@ export default function AgentLedgerPage() {
   const hue = agent.id.charCodeAt(0) * 37 % 360
 
   return (
-    <div className="page" style={{ padding: '20px 28px 80px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 80px' }}>
       <Link href="/ledger" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-3)', marginBottom: 20, textDecoration: 'none' }}>
         <Icons.Chevron style={{ width: 12, height: 12, transform: 'rotate(180deg)' }} />
         All agents

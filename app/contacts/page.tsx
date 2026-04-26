@@ -57,7 +57,7 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="page" style={{ padding: '20px 28px 80px' }}>
+    <div className="page wide" style={{ padding: '20px 28px 80px' }}>
       <div className="page-head">
         <div>
           <h1>Contacts</h1>
