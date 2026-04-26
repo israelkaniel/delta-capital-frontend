@@ -10,6 +10,7 @@ import {
   api,
   type DbAccount, type DbFunder, type DbAgent, type DbGlobalRule,
 } from '@/lib/api'
+import { getAccounts, getActiveAgents, getActiveFunders, invalidate } from '@/lib/lookups'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -245,11 +246,11 @@ export function NewDealModal({
     setDraft({ ...EMPTY_DRAFT, account: initialAccount ?? null })
     setAgentQ('')
     setNewClientMode(false); setError(null); setFunderRule(null)
-    Promise.all([api.accounts.list(), api.funders.list(), api.agents.list()])
+    Promise.all([getAccounts(), getActiveFunders(), getActiveAgents()])
       .then(([a, f, ag]) => {
-        setAccounts(a.data ?? [])
-        setFunders((f.data ?? []).filter(x => x.is_active))
-        setAgents((ag.data ?? []).filter(x => x.is_active))
+        setAccounts(a)
+        setFunders(f)
+        setAgents(ag)
       })
   }, [open, initialAccount])
 
@@ -300,6 +301,7 @@ export function NewDealModal({
         const created = await api.accounts.create({ name: draft.newAccountName.trim() })
         if (created.error) throw created.error
         finalAccountId = created.data!.id
+        invalidate('accounts')
       }
 
       const body: Parameters<typeof api.deals.create>[0] = {

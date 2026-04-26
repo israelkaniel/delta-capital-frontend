@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, commStatusLabel, commStatusTone, type DbCommission } from '@/lib/api'
+import { getAgents } from '@/lib/lookups'
 import { StatusPill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -21,30 +22,34 @@ export default function CommissionsPage() {
   const { openCommission } = useShell()
 
   const [commissions, setCommissions] = useState<DbCommission[]>([])
+  const [agentNameMap, setAgentNameMap] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState('All')
   const [agentFilter, setAgentFilter] = useState('')
 
   useEffect(() => {
-    api.commissions.list().then(res => {
+    Promise.all([api.commissions.list(), getAgents()]).then(([res, agents]) => {
       setCommissions(res.data ?? [])
+      setAgentNameMap(new Map(agents.map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])))
       setLoading(false)
     })
   }, [])
 
   const allAgentNames = useMemo(() =>
-    Array.from(new Set(commissions.map(c => c.deal_agents?.agents?.profiles?.name).filter(Boolean) as string[])).sort(),
-    [commissions],
+    Array.from(new Set(commissions
+      .map(c => agentNameMap.get(c.deal_agents?.agent_id ?? '') ?? '')
+      .filter(Boolean) as string[])).sort(),
+    [commissions, agentNameMap],
   )
 
   const filtered = useMemo(() => commissions.filter(c => {
     if (tab !== 'All' && c.status !== tab) return false
-    if (agentFilter && c.deal_agents?.agents?.profiles?.name !== agentFilter) return false
+    if (agentFilter && agentNameMap.get(c.deal_agents?.agent_id ?? '') !== agentFilter) return false
     const q = search.toLowerCase()
     return !q || c.id.toLowerCase().includes(q) || commClient(c).toLowerCase().includes(q) ||
       (commDeal(c)?.id ?? '').toLowerCase().includes(q)
-  }), [search, tab, agentFilter, commissions])
+  }), [search, tab, agentFilter, commissions, agentNameMap])
 
   const totalValue = filtered.reduce((a, c) => a + Number(c.total_amount), 0)
 
@@ -94,7 +99,7 @@ export default function CommissionsPage() {
               <tbody>
                 {filtered.map(c => {
                   const agent = commAgent(c)
-                  const agentName = agent?.profiles?.name ?? agent?.code ?? '—'
+                  const agentName = agentNameMap.get(c.deal_agents?.agent_id ?? '') ?? agent?.code ?? '—'
                   return (
                     <tr key={c.id} onClick={() => router.push(`/commissions/${c.id}`)} style={{ cursor: 'pointer' }}>
                       <td><span className="mono text-xs" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{c.id.slice(0, 8)}</span></td>

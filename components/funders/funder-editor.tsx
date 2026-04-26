@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
 import { api, type DbFunder } from '@/lib/api'
+import { invalidate } from '@/lib/lookups'
 
 export function FunderEditor({
   open, onClose, onDone, editing,
@@ -37,6 +38,7 @@ export function FunderEditor({
         ? await api.funders.update(editing.id, body)
         : await api.funders.create(body)
       if (res.error) throw res.error
+      invalidate('funders')
       onDone(); onClose()
     } catch (e: any) {
       setError(e?.message ?? 'Save failed')

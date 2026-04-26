@@ -5,6 +5,7 @@ import { Icons } from '@/lib/icons'
 import { Avatar } from '@/components/ui/avatar'
 import { useToast } from '@/components/ui/toast/toast'
 import { api, type DbDeal, type DbAgent } from '@/lib/api'
+import { getActiveAgents } from '@/lib/lookups'
 
 type Split = { agent: DbAgent; pct: string }
 
@@ -27,8 +28,7 @@ export function ManageAgentsModal({
   useEffect(() => {
     if (!open) return
     setError(null)
-    api.agents.list().then(r => {
-      const list = (r.data ?? []).filter(a => a.is_active)
+    getActiveAgents().then(list => {
       setAllAgents(list)
 
       // Hydrate current splits from deal.deal_agents

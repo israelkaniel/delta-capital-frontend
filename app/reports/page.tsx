@@ -32,21 +32,24 @@ export default function ReportsPage() {
   useEffect(() => {
     setLoading(true)
     const months = last6Months()
+    const monthKeys = months.map(m => monthKey(m.month, m.year))
+    // Two requests instead of seven: agents-perf + a single batched 6-month report.
     Promise.all([
       api.reports.agents(),
-      ...months.map(m => api.reports.monthly(m.month, m.year)),
-    ]).then(results => {
-      const [agentsRes, ...monthRes] = results
+      api.reports.monthlyBatch(monthKeys),
+    ]).then(([agentsRes, batchRes]) => {
       if (agentsRes.error) { setError(agentsRes.error.message); setLoading(false); return }
       setAgents((agentsRes.data as any)?.agents ?? [])
-      const points = months.map((m, i) => {
-        const r = (monthRes[i].data as { summaries?: DbMonthlySummary[] })?.summaries ?? []
+      const batch = (batchRes.data as Record<string, { summaries?: DbMonthlySummary[] }>) ?? {}
+      const points = months.map(m => {
+        const k = monthKey(m.month, m.year)
+        const r = batch[k]?.summaries ?? []
         const totals = r.reduce((acc, s) => ({
           earned:   acc.earned   + Number(s.total_earned),
           paid:     acc.paid     + Number(s.total_paid),
           reserved: acc.reserved + Number(s.total_reserved) - Number(s.total_released),
         }), { earned: 0, paid: 0, reserved: 0 })
-        return { month: m.month, year: m.year, key: monthKey(m.month, m.year), label: monthLabel(m.month, m.year), ...totals }
+        return { month: m.month, year: m.year, key: k, label: monthLabel(m.month, m.year), ...totals }
       })
       setHistory(points)
       setLoading(false)

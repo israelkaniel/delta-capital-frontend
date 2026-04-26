@@ -133,6 +133,11 @@ export const api = {
     list: () => invokeFunction<DbAgent[]>('agents'),
     get:  (id: string) => invokeFunction<DbAgent>(`agents/${id}`),
     ledger: (id: string) => invokeFunction<DbLedgerResponse>(`agents/${id}/ledger`),
+    /** Batched balances for many agents in one round-trip. Replaces N+1 fetches in payout. */
+    ledgerBatch: (agentIds: string[]) =>
+      invokeFunction<{ balances: Record<string, DbAgentBalances> }>('agents/ledger-batch', {
+        method: 'POST', body: { agent_ids: agentIds },
+      }),
     create: (body: { email: string; name: string; code?: string; password: string }) =>
       invokeFunction<DbAgent>('agents', { method: 'POST', body }),
     update: (id: string, body: Partial<DbAgent>) =>
@@ -241,6 +246,11 @@ export const api = {
     agents: () => invokeFunction<{ agents: DbAgentPerformance[] }>('reports', { params: { type: 'agents' } }),
     monthly: (month: number, year: number) =>
       invokeFunction<DbMonthlyReport>('reports', { params: { type: 'monthly', month: String(month), year: String(year) } }),
+    /** Batched monthly reports keyed by 'YYYY-MM'. Replaces 6 sequential calls. */
+    monthlyBatch: (months: string[]) =>
+      invokeFunction<Record<string, DbMonthlyReport>>('reports/monthly-batch', {
+        method: 'POST', body: { months },
+      }),
   },
 
   // ── Monthly Close ──

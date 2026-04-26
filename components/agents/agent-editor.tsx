@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
 import { api, type DbAgent } from '@/lib/api'
+import { invalidate } from '@/lib/lookups'
 
 export function AgentEditor({
   open, onClose, onDone, editing,
@@ -41,6 +42,7 @@ export function AgentEditor({
         const res = await api.agents.create({ email, name, code: code || undefined, password })
         if (res.error) throw res.error
       }
+      invalidate('agents')
       onDone()
       onClose()
     } catch (e: any) {

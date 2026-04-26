@@ -4,6 +4,7 @@ import { Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
 import { useToast } from '@/components/ui/toast/toast'
 import { api, type DbDeal, type DbAccount, type DbFunder } from '@/lib/api'
+import { getAccounts, getActiveFunders } from '@/lib/lookups'
 
 export function EditDealModal({
   open, onClose, deal, onDone,
@@ -34,11 +35,8 @@ export function EditDealModal({
     setExternalId(deal.external_id ?? '')
     setNotes(deal.notes ?? '')
     setError(null)
-    Promise.all([api.accounts.list(), api.funders.list()])
-      .then(([a, f]) => {
-        setAccounts(a.data ?? [])
-        setFunders((f.data ?? []).filter(x => x.is_active))
-      })
+    Promise.all([getAccounts(), getActiveFunders()])
+      .then(([a, f]) => { setAccounts(a); setFunders(f) })
   }, [open, deal])
 
   const handleSave = async () => {

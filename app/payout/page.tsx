@@ -21,21 +21,24 @@ export default function PayoutPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    const agentsRes = await api.agents.list()
+    // Single agents query (cached) + single batched-ledger call replaces the
+    // old N+1 of 1 + N agent.ledger fetches.
+    const [agentsRes, paymentsRes] = await Promise.all([
+      api.agents.list(),
+      api.payments.list(),
+    ])
     if (agentsRes.error) { setError(agentsRes.error.message); setLoading(false); return }
     const agents = agentsRes.data ?? []
-
-    const ledgerResults = await Promise.all(
-      agents.map(a => api.agents.ledger(a.id).then(r => ({ agent: a, res: r }))),
-    )
-
-    const paymentsRes = await api.payments.list()
     setPayments(paymentsRes.data ?? [])
 
+    if (agents.length === 0) { setRows([]); setLoading(false); return }
+
+    const balRes = await api.agents.ledgerBatch(agents.map(a => a.id))
+    const balances = balRes.data?.balances ?? {}
     setRows(
-      ledgerResults
-        .filter(r => r.res.data)
-        .map(r => ({ agent: r.agent, balances: r.res.data!.balances })),
+      agents
+        .filter(a => balances[a.id])
+        .map(a => ({ agent: a, balances: balances[a.id] })),
     )
     setLoading(false)
   }, [])

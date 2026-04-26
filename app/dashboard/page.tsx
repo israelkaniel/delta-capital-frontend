@@ -9,6 +9,7 @@ import { StatusPill } from '@/components/ui/pill'
 import { AreaChart, Donut, Sparkline } from '@/components/ui/charts'
 import { AvatarStack } from '@/components/ui/avatar'
 import { useShell } from '@/components/shell/shell-provider'
+import { getAgents } from '@/lib/lookups'
 
 const now = new Date()
 
@@ -21,37 +22,38 @@ export default function DashboardPage() {
   const [commissions, setCommissions] = useState<DbCommission[]>([])
   const [agentPerf, setAgentPerf]   = useState<DbAgentPerformance[]>([])
   const [monthlyData, setMonthlyData] = useState<{ x: string; y: number; volume: number }[]>([])
+  const [agentNameMap, setAgentNameMap] = useState<Map<string, string>>(new Map())
   const [loading, setLoading]       = useState(true)
 
   useEffect(() => {
+    // Build the 6-month list and ask the batch endpoint for them in one shot
+    const monthsAsc = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
+      return {
+        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        label: d.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
+      }
+    })
+
     Promise.all([
       api.deals.list(),
       api.commissions.list(),
       api.reports.agents(),
-      // Load last 6 months of reports
-      Promise.all(
-        Array.from({ length: 6 }, (_, i) => {
-          const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-          return api.reports.monthly(d.getMonth() + 1, d.getFullYear())
-            .then(r => ({
-              month: d.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
-              data:  r.data,
-            }))
-        }),
-      ),
-    ]).then(([dealsRes, commRes, agentRes, monthly]) => {
+      api.reports.monthlyBatch(monthsAsc.map(m => m.key)),
+      getAgents(),
+    ]).then(([dealsRes, commRes, agentRes, batchRes, agents]) => {
       setDeals(dealsRes.data ?? [])
       setCommissions(commRes.data ?? [])
       setAgentPerf(agentRes.data?.agents ?? [])
-      setMonthlyData(
-        monthly.reverse().map(m => ({
-          x:      m.month,
-          y:      (m.data as any)?.summaries?.reduce((a: number, s: any) => a + Number(s.total_earned), 0) ?? 0,
-          volume: (dealsRes.data ?? [])
-            .filter(d => d.funds_transferred_at?.startsWith(m.month.replace(' ', ' 20')))
-            .reduce((a, d) => a + Number(d.transferred_amount ?? 0), 0),
-        })),
-      )
+      setAgentNameMap(new Map(agents.map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])))
+      const batch = (batchRes.data as Record<string, { summaries?: { total_earned: number }[] }>) ?? {}
+      setMonthlyData(monthsAsc.map(m => ({
+        x: m.label,
+        y: batch[m.key]?.summaries?.reduce((a, s) => a + Number(s.total_earned), 0) ?? 0,
+        volume: (dealsRes.data ?? [])
+          .filter(d => d.funds_transferred_at?.startsWith(m.key))
+          .reduce((a, d) => a + Number(d.transferred_amount ?? 0), 0),
+      })))
       setLoading(false)
     })
   }, [])
@@ -225,7 +227,7 @@ export default function DashboardPage() {
                       <td className="muted">{d.funders?.name ?? '—'}</td>
                       <td className="num">{fmt.money(Number(d.transferred_amount ?? 0))}</td>
                       <td>
-                        <AvatarStack items={(d.deal_agents ?? []).map(da => ({ name: da.agents?.profiles?.name ?? '?', hue: 180 }))} />
+                        <AvatarStack items={(d.deal_agents ?? []).map(da => ({ name: agentNameMap.get(da.agent_id) ?? '?', hue: 180 }))} />
                       </td>
                       <td><StatusPill status={dealStatusLabel(d.status)} /></td>
                       <td className="muted-num">{d.funds_transferred_at ? fmt.dateShort(d.funds_transferred_at) : fmt.dateShort(d.created_at)}</td>

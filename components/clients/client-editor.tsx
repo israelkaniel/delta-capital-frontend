@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Modal } from '@/components/ui/drawer'
 import { Icons } from '@/lib/icons'
 import { api, type DbAccount } from '@/lib/api'
+import { invalidate } from '@/lib/lookups'
 
 export function ClientEditor({
   open, onClose, onDone, editing,
@@ -33,6 +34,7 @@ export function ClientEditor({
         ? await api.accounts.update(editing.id, body)
         : await api.accounts.create(body)
       if (res.error) throw res.error
+      invalidate('accounts')
       onDone(res.data ?? undefined); onClose()
     } catch (e: any) {
       setError(e?.message ?? 'Save failed')
