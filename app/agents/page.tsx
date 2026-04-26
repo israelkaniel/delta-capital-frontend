@@ -68,7 +68,7 @@ export default function AgentsPage() {
           {filtered.map(a => (
             <div key={a.id} className="card" style={{ padding: 20, cursor: 'pointer', transition: 'box-shadow 0.15s' }}
               onClick={() => router.push(`/agents/${a.id}`)}
-              onMouseEnter={e => { prefetch.agent(qc, a.id); (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-md)' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-md)' }}
               onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -111,7 +111,7 @@ export default function AgentsPage() {
               </thead>
               <tbody>
                 {filtered.map(a => (
-                  <tr key={a.id} onClick={() => router.push(`/agents/${a.id}`)} onMouseEnter={() => prefetch.agent(qc, a.id)} style={{ cursor: 'pointer' }}>
+                  <tr key={a.id} onClick={() => router.push(`/agents/${a.id}`)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={a.name} size="sm" hue={180} />

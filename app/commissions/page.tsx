@@ -99,7 +99,7 @@ export default function CommissionsPage() {
                 {filtered.map(c => {
                   const agentName = agentNameOf(c)
                   return (
-                    <tr key={c.id} onClick={() => router.push(`/commissions/${c.id}`)} onMouseEnter={() => prefetch.commission(qc, c.id)} style={{ cursor: 'pointer' }}>
+                    <tr key={c.id} onClick={() => router.push(`/commissions/${c.id}`)} style={{ cursor: 'pointer' }}>
                       <td><span className="mono text-xs" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{c.id.slice(0, 8)}</span></td>
                       <td><span className="strong">{commClient(c)}</span></td>
                       <td>

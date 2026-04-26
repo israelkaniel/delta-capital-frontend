@@ -356,7 +356,7 @@ export default function DealsPage() {
               className="card"
               style={{ padding: 16, cursor: 'pointer', transition: 'box-shadow 0.15s, transform 0.1s' }}
               onClick={() => router.push(`/deals/${d.id}`)}
-              onMouseEnter={e => { prefetch.deal(qc, d.id); e.currentTarget.style.boxShadow = '0 8px 24px -8px rgba(0,0,0,0.15)' }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 24px -8px rgba(0,0,0,0.15)' }}
               onMouseLeave={e => { e.currentTarget.style.boxShadow = '' }}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
@@ -418,7 +418,6 @@ export default function DealsPage() {
                 {filtered.map(d => (
                   <tr key={d.id} className={selected.has(d.id) ? 'selected' : ''}
                       onClick={() => router.push(`/deals/${d.id}`)}
-                      onMouseEnter={() => prefetch.deal(qc, d.id)}
                       style={{ cursor: 'pointer' }}>
                     <td onClick={e => { e.stopPropagation(); toggle(d.id) }}>
                       <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />

@@ -59,7 +59,7 @@ export default function FundersPage() {
               </thead>
               <tbody>
                 {filtered.map(f => (
-                  <tr key={f.id} onClick={() => router.push(`/funders/${f.id}`)} onMouseEnter={() => prefetch.funder(qc, f.id)} style={{ cursor: 'pointer' }}>
+                  <tr key={f.id} onClick={() => router.push(`/funders/${f.id}`)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={f.name} size="sm" hue={hueFromId(f.id)} />

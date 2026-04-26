@@ -60,7 +60,6 @@ export default function ClientsPage() {
                 {filtered.map(a => (
                   <tr key={a.id}
                       onClick={() => router.push(`/clients/${a.id}`)}
-                      onMouseEnter={() => prefetch.account(qc, a.id)}
                       style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
