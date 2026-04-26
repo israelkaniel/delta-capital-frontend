@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, type DbAgent, type DbAgentPerformance } from '@/lib/api'
+import { dbAgents } from '@/lib/db'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -20,7 +21,7 @@ export default function AgentsPage() {
 
   const refresh = () => {
     setLoading(true)
-    Promise.all([api.agents.list(), api.reports.agents()]).then(([agentsRes, perfRes]) => {
+    Promise.all([dbAgents.list(), api.reports.agents()]).then(([agentsRes, perfRes]) => {
       setAgents(agentsRes.data ?? [])
       setPerf(perfRes.data?.agents ?? [])
       setLoading(false)

@@ -6,6 +6,7 @@ import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { Pill } from '@/components/ui/pill'
 import { api, type DbFunder, type DbGlobalRule } from '@/lib/api'
+import { dbFunders, dbRules } from '@/lib/db'
 import { FunderEditor } from '@/components/funders/funder-editor'
 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
@@ -27,7 +28,7 @@ export default function FunderDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    const [f, r] = await Promise.all([api.funders.get(id), api.rules.globalList({ funder_id: id })])
+    const [f, r] = await Promise.all([dbFunders.get(id), dbRules.globalList({ funder_id: id })])
     if (f.error) { setError(f.error.message); setLoading(false); return }
     setFunder(f.data)
     setRules(r.data ?? [])

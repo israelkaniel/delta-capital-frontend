@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, type DbFunder } from '@/lib/api'
+import { dbFunders } from '@/lib/db'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -20,7 +21,7 @@ export default function FundersPage() {
 
   const refresh = () => {
     setLoading(true)
-    api.funders.list().then(res => {
+    dbFunders.list().then(res => {
       setFunders(res.data ?? [])
       setLoading(false)
     })

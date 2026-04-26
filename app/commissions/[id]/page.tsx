@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, commStatusLabel, type DbCommission, type DbCommissionReserve } from '@/lib/api'
+import { dbCommissions } from '@/lib/db'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { ReserveModal } from '@/components/commissions/reserve-modal'
@@ -24,7 +25,7 @@ export default function CommissionDetailPage() {
   const [modal, setModal] = useState<{ mode: Mode; reserve?: DbCommissionReserve } | null>(null)
 
   const fetchCommission = useCallback(async () => {
-    const res = await api.commissions.get(id)
+    const res = await dbCommissions.get(id)
     if (res.error) { setError(res.error.message); setLoading(false); return }
     setCommission(res.data)
     setLoading(false)

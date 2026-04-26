@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, type DbAgent, type DbAgentBalances, type DbPayment } from '@/lib/api'
+import { dbAgents, dbPayments } from '@/lib/db'
 import { Avatar } from '@/components/ui/avatar'
 import { Pill } from '@/components/ui/pill'
 import { RecordPaymentModal } from '@/components/payout/record-payment-modal'
@@ -24,8 +25,8 @@ export default function PayoutPage() {
     // Single agents query (cached) + single batched-ledger call replaces the
     // old N+1 of 1 + N agent.ledger fetches.
     const [agentsRes, paymentsRes] = await Promise.all([
-      api.agents.list(),
-      api.payments.list(),
+      dbAgents.list(),
+      dbPayments.list(),
     ])
     if (agentsRes.error) { setError(agentsRes.error.message); setLoading(false); return }
     const agents = agentsRes.data ?? []

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, commStatusLabel, commStatusTone, type DbCommission } from '@/lib/api'
+import { dbCommissions } from '@/lib/db'
 import { getAgents } from '@/lib/lookups'
 import { StatusPill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
@@ -29,7 +30,7 @@ export default function CommissionsPage() {
   const [agentFilter, setAgentFilter] = useState('')
 
   useEffect(() => {
-    Promise.all([api.commissions.list(), getAgents()]).then(([res, agents]) => {
+    Promise.all([dbCommissions.list(), getAgents()]).then(([res, agents]) => {
       setCommissions(res.data ?? [])
       setAgentNameMap(new Map(agents.map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])))
       setLoading(false)

@@ -7,6 +7,7 @@ import { Pill } from '@/components/ui/pill'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, type DbAgent, type DbAgentBalances, type DbLedgerEntry } from '@/lib/api'
+import { dbAgents } from '@/lib/db'
 
 type Tone = 'pos' | 'neg' | 'warn' | 'info' | 'accent' | 'default'
 
@@ -43,7 +44,7 @@ export default function AgentLedgerPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    const [a, l] = await Promise.all([api.agents.get(agentId), api.agents.ledger(agentId)])
+    const [a, l] = await Promise.all([dbAgents.get(agentId), api.agents.ledger(agentId)])
     if (a.error) { setError(a.error.message); setLoading(false); return }
     if (l.error) { setError(l.error.message); setLoading(false); return }
     setAgent(a.data)

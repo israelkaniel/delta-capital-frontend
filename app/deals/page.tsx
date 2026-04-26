@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, type DbDeal } from '@/lib/api'
+import { dbDeals } from '@/lib/db'
 import { StatusPill } from '@/components/ui/pill'
 import { AvatarStack } from '@/components/ui/avatar'
 import { useShell } from '@/components/shell/shell-provider'
@@ -130,7 +131,7 @@ export default function DealsPage() {
 
   const refresh = useCallback(() => {
     setLoading(true)
-    Promise.all([api.deals.list(), getAgents()]).then(([res, agents]) => {
+    Promise.all([dbDeals.list(), getAgents()]).then(([res, agents]) => {
       setDeals(res.data ?? [])
       setAgentMap(new Map(agents.map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])))
       setLoading(false)

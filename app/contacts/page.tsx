@@ -6,6 +6,7 @@ import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { api, type DbAccount, type DbContact } from '@/lib/api'
+import { dbAccounts } from '@/lib/db'
 import { ContactEditor } from '@/components/contacts/contact-editor'
 
 type FlatContact = DbContact & { accountName: string }
@@ -24,7 +25,7 @@ export default function ContactsPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    const res = await api.accounts.list()
+    const res = await dbAccounts.list()
     if (res.error) { setLoading(false); return }
     const list = res.data ?? []
     setAccounts(list)

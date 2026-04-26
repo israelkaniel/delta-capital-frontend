@@ -4,6 +4,7 @@ import { Icons } from '@/lib/icons'
 import { Pill } from '@/components/ui/pill'
 import { fmt } from '@/lib/fmt'
 import { api, type DbFunder, type DbAgent, type DbGlobalRule, type DbAgentRule } from '@/lib/api'
+import { dbAgents, dbFunders, dbRules } from '@/lib/db'
 import { RuleEditor } from '@/components/rules/rule-editor'
 
 const TABS = [
@@ -43,10 +44,10 @@ export default function RulesPage() {
   const refresh = useCallback(async () => {
     setLoading(true)
     const [f, a, g, ar] = await Promise.all([
-      api.funders.list(),
-      api.agents.list(),
-      api.rules.globalList(),
-      api.rules.agentList(),
+      dbFunders.list(),
+      dbAgents.list(),
+      dbRules.globalList(),
+      dbRules.agentList(),
     ])
     setFunders(f.data ?? [])
     setAgents(a.data ?? [])

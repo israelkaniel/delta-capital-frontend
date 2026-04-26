@@ -8,6 +8,7 @@ import {
   api, dealStatusLabel, commStatusLabel,
   type DbAgent, type DbAgentBalances, type DbDeal, type DbCommission,
 } from '@/lib/api'
+import { dbAgents, dbCommissions, dbDeals } from '@/lib/db'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 
@@ -26,10 +27,10 @@ export default function AgentDetailPage() {
   const refresh = useCallback(async () => {
     setLoading(true)
     const [a, l, d, c] = await Promise.all([
-      api.agents.get(id),
+      dbAgents.get(id),
       api.agents.ledger(id),
-      api.deals.list(),
-      api.commissions.list({ agent_id: id }),
+      dbDeals.list(),
+      dbCommissions.list({ agent_id: id }),
     ])
     if (a.error) { setError(a.error.message); setLoading(false); return }
     setAgent(a.data)

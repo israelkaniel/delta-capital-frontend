@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { api, type DbAgent, type DbAgentBalances } from '@/lib/api'
+import { dbAgents } from '@/lib/db'
 import { Avatar } from '@/components/ui/avatar'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
@@ -13,7 +14,7 @@ export default function LedgerPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.agents.list().then(async agentsRes => {
+    dbAgents.list().then(async agentsRes => {
       const agents = agentsRes.data ?? []
       const withBalances = await Promise.all(
         agents.map(async a => {

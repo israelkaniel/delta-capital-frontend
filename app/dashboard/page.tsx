@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, type DbDeal, type DbCommission, type DbAgentPerformance } from '@/lib/api'
+import { dbCommissions, dbDeals } from '@/lib/db'
 import { Avatar } from '@/components/ui/avatar'
 import { StatusPill } from '@/components/ui/pill'
 import { AreaChart, Donut, Sparkline } from '@/components/ui/charts'
@@ -36,8 +37,8 @@ export default function DashboardPage() {
     })
 
     Promise.all([
-      api.deals.list(),
-      api.commissions.list(),
+      dbDeals.list(),
+      dbCommissions.list(),
       api.reports.agents(),
       api.reports.monthlyBatch(monthsAsc.map(m => m.key)),
       getAgents(),

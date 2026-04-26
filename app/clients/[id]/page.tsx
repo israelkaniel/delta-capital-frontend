@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, type DbAccount, type DbContact, type DbDeal } from '@/lib/api'
+import { dbAccounts } from '@/lib/db'
 import { StatusPill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { ContactEditor } from '@/components/contacts/contact-editor'
@@ -28,7 +29,7 @@ export default function ClientDetailPage() {
   const [newDealOpen, setNewDealOpen] = useState(false)
 
   const refresh = useCallback(async () => {
-    const res = await api.accounts.get(id)
+    const res = await dbAccounts.get(id)
     if (res.error) { setError(res.error.message); setLoading(false); return }
     setAccount(res.data)
     setLoading(false)

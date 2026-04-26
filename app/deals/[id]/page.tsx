@@ -8,6 +8,7 @@ import {
   api, dealStatusLabel, commStatusLabel,
   type DbDeal, type DbCommission, type DbDealNote, type DbAuditLog,
 } from '@/lib/api'
+import { dbDeals, dbNotes } from '@/lib/db'
 import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { useToast } from '@/components/ui/toast/toast'
@@ -77,14 +78,14 @@ export default function DealDetailPage() {
   const [timelineLoading, setTimelineLoading] = useState(false)
 
   const refresh = useCallback(async () => {
-    const res = await api.deals.get(id)
+    const res = await dbDeals.get(id)
     if (res.error) { setError(res.error.message); setLoading(false); return }
     setDeal(res.data as DealFull)
     setLoading(false)
   }, [id])
 
   const refreshNotes = useCallback(async () => {
-    const res = await api.deals.notes.list(id)
+    const res = await dbNotes.list(id)
     setNotes(res.data ?? [])
   }, [id])
 

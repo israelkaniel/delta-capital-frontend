@@ -2,8 +2,12 @@
 // many modals. Each modal previously called `api.X.list()` on every open,
 // which pounded the Edge Functions and blocked first-paint of the form.
 // Cache TTL = 60s. Mutations should call `invalidate()` to force a refetch.
+//
+// Reads use the direct DB layer (RLS-protected PostgREST), bypassing the
+// Edge Function cold-start tax.
 
-import { api, type DbAgent, type DbFunder, type DbAccount } from './api'
+import { dbAgents, dbFunders, dbAccounts } from './db'
+import type { DbAgent, DbFunder, DbAccount } from './api'
 
 const TTL_MS = 60_000
 
@@ -22,7 +26,7 @@ function fresh<T>(loader: () => Promise<T>): Entry<T> {
 export async function getAgents(): Promise<DbAgent[]> {
   const e = cache.agents
   if (!e || e.expires <= Date.now()) {
-    cache.agents = fresh(async () => (await api.agents.list()).data ?? [])
+    cache.agents = fresh(async () => (await dbAgents.list()).data ?? [])
   }
   return cache.agents!.promise
 }
@@ -34,7 +38,7 @@ export async function getActiveAgents(): Promise<DbAgent[]> {
 export async function getFunders(): Promise<DbFunder[]> {
   const e = cache.funders
   if (!e || e.expires <= Date.now()) {
-    cache.funders = fresh(async () => (await api.funders.list()).data ?? [])
+    cache.funders = fresh(async () => (await dbFunders.list()).data ?? [])
   }
   return cache.funders!.promise
 }
@@ -46,7 +50,7 @@ export async function getActiveFunders(): Promise<DbFunder[]> {
 export async function getAccounts(): Promise<DbAccount[]> {
   const e = cache.accounts
   if (!e || e.expires <= Date.now()) {
-    cache.accounts = fresh(async () => (await api.accounts.list()).data ?? [])
+    cache.accounts = fresh(async () => (await dbAccounts.list()).data ?? [])
   }
   return cache.accounts!.promise
 }

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, type DbAccount } from '@/lib/api'
+import { dbAccounts } from '@/lib/db'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { ClientEditor } from '@/components/clients/client-editor'
@@ -19,7 +20,7 @@ export default function ClientsPage() {
 
   const refresh = () => {
     setLoading(true)
-    api.accounts.list().then(res => {
+    dbAccounts.list().then(res => {
       setAccounts(res.data ?? [])
       setLoading(false)
     })

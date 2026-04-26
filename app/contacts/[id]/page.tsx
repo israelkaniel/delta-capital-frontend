@@ -7,6 +7,7 @@ import { fmt } from '@/lib/fmt'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { api, type DbAccount, type DbContact } from '@/lib/api'
+import { dbAccounts } from '@/lib/db'
 import { ContactEditor } from '@/components/contacts/contact-editor'
 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 47) % 360
@@ -22,12 +23,12 @@ export default function ContactDetailPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    const res = await api.accounts.list()
+    const res = await dbAccounts.list()
     if (res.error) { setLoading(false); return }
     for (const a of res.data ?? []) {
       const found = (a.contacts ?? []).find(c => c.id === id)
       if (found) {
-        const detail = await api.accounts.get(a.id)
+        const detail = await dbAccounts.get(a.id)
         setContact({ ...(found as DbContact), account: detail.data ?? a })
         setLoading(false)
         return
