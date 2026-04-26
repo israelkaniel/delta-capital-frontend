@@ -3,56 +3,61 @@ import { useState, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { type DbAgent, type DbAgentBalances } from '@/lib/api'
-import { useAgentsList, usePaymentsList, useAgentsLedgerBatch, invalidate } from '@/lib/queries'
+import { usePayoutSummary, qk } from '@/lib/queries'
 import { Avatar } from '@/components/ui/avatar'
 import { Pill } from '@/components/ui/pill'
 import { RecordPaymentModal } from '@/components/payout/record-payment-modal'
 
 type Row = {
-  agent: DbAgent
-  balances: DbAgentBalances
+  agent: { id: string; code: string | null; is_active: boolean; name: string; email: string | null }
+  balances: { total_commissions: number; reserved_amount: number; reversed_amount: number; paid_amount: number; available_balance: number }
 }
 
 export default function PayoutPage() {
   const qc = useQueryClient()
-  const agentsQ   = useAgentsList()
-  const paymentsQ = usePaymentsList()
-  const agents = useMemo(() => agentsQ.data ?? [], [agentsQ.data])
-  const payments = paymentsQ.data ?? []
-  const balancesQ = useAgentsLedgerBatch(useMemo(() => agents.map(a => a.id), [agents]))
+  // ★ ONE round-trip — Postgres RPC returns agents+balances+payments in one shot.
+  const summaryQ = usePayoutSummary()
+  const summary  = summaryQ.data
+  const loading  = summaryQ.isLoading
+  const error    = summaryQ.error?.message ?? null
+  const refresh  = () => qc.invalidateQueries({ queryKey: qk.page.payout() })
 
   const rows: Row[] = useMemo(() => {
-    const balances = balancesQ.data ?? {}
-    return agents.filter(a => balances[a.id]).map(a => ({ agent: a, balances: balances[a.id] }))
-  }, [agents, balancesQ.data])
+    return (summary?.agents ?? []).map(a => {
+      const reserved = Math.max(0, Number(a.reserved_amount_raw))
+      const available = Math.max(0, Number(a.total_commissions) - reserved - Number(a.reversed_amount) - Number(a.paid_amount))
+      return {
+        agent: { id: a.id, code: a.code, is_active: a.is_active, name: a.name, email: a.email },
+        balances: {
+          total_commissions: Number(a.total_commissions),
+          reserved_amount:   reserved,
+          reversed_amount:   Number(a.reversed_amount),
+          paid_amount:       Number(a.paid_amount),
+          available_balance: available,
+        },
+      }
+    })
+  }, [summary])
 
-  const loading = agentsQ.isLoading || balancesQ.isLoading
-  const error = agentsQ.error?.message ?? balancesQ.error?.message ?? null
-  const refresh = () => {
-    invalidate.agents(qc)
-    invalidate.payments(qc)
-    qc.invalidateQueries({ queryKey: ['agents', 'ledger-batch'] })
-  }
-
+  const payments = summary?.payments ?? []
   const [modal, setModal] = useState<Row | null>(null)
 
   const totals = useMemo(() => {
     return rows.reduce((acc, r) => ({
-      earned:    acc.earned    + Number(r.balances.total_commissions),
-      reserved:  acc.reserved  + Number(r.balances.reserved_amount),
-      reversed:  acc.reversed  + Number(r.balances.reversed_amount),
-      paid:      acc.paid      + Number(r.balances.paid_amount),
-      available: acc.available + Number(r.balances.available_balance),
+      earned:    acc.earned    + r.balances.total_commissions,
+      reserved:  acc.reserved  + r.balances.reserved_amount,
+      reversed:  acc.reversed  + r.balances.reversed_amount,
+      paid:      acc.paid      + r.balances.paid_amount,
+      available: acc.available + r.balances.available_balance,
     }), { earned: 0, reserved: 0, reversed: 0, paid: 0, available: 0 })
   }, [rows])
 
-  const payableAgents = rows.filter(r => Number(r.balances.available_balance) > 0).length
+  const payableAgents = rows.filter(r => r.balances.available_balance > 0).length
 
   const exportCsv = () => {
     const header = ['Agent', 'Code', 'Earned', 'Reserved', 'Reversed', 'Paid', 'Available']
     const body = rows.map(r => [
-      r.agent.profiles?.name ?? '',
+      r.agent.name ?? '',
       r.agent.code ?? '',
       r.balances.total_commissions,
       r.balances.reserved_amount,
@@ -140,7 +145,7 @@ export default function PayoutPage() {
                 <tr><td colSpan={7} style={{ padding: 48, textAlign: 'center', color: 'var(--ink-4)' }}>Loading…</td></tr>
               )}
               {!loading && rows.map(row => {
-                const name = row.agent.profiles?.name ?? row.agent.code ?? '—'
+                const name = row.agent.name ?? row.agent.code ?? '—'
                 const available = Number(row.balances.available_balance)
                 const hue = row.agent.id.charCodeAt(0) * 37 % 360
                 return (
@@ -152,7 +157,7 @@ export default function PayoutPage() {
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{name}</div>
                           <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 1 }}>
                             {row.agent.code && <span className="mono">{row.agent.code}</span>}
-                            {row.agent.profiles?.email && <span style={{ marginLeft: 8 }}>{row.agent.profiles.email}</span>}
+                            {row.agent.email && <span style={{ marginLeft: 8 }}>{row.agent.email}</span>}
                           </div>
                         </div>
                       </div>
@@ -224,7 +229,7 @@ export default function PayoutPage() {
                   return (
                     <tr key={p.id}>
                       <td>{fmt.date(p.payment_date)}</td>
-                      <td>{row?.agent.profiles?.name ?? '—'}</td>
+                      <td>{(p as any).agent_name ?? '—'}</td>
                       <td>{p.reference || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
                       <td className="num" style={{ fontWeight: 600 }}>{fmt.money(Number(p.amount))}</td>
                     </tr>
@@ -241,7 +246,7 @@ export default function PayoutPage() {
           open
           onClose={() => setModal(null)}
           agentId={modal.agent.id}
-          agentName={modal.agent.profiles?.name ?? modal.agent.code ?? 'Agent'}
+          agentName={modal.agent.name ?? modal.agent.code ?? 'Agent'}
           suggestedAmount={Number(modal.balances.available_balance)}
           onDone={refresh}
         />

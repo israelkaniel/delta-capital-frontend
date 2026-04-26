@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { commStatusLabel, commStatusTone, type DbCommission } from '@/lib/api'
-import { useCommissionsList, useAgentsList, prefetch } from '@/lib/queries'
+import { useCommissionsList, prefetch } from '@/lib/queries'
 import { StatusPill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -23,33 +23,32 @@ export default function CommissionsPage() {
   const qc = useQueryClient()
   const { openCommission } = useShell()
 
-  const commsQ  = useCommissionsList()
-  const agentsQ = useAgentsList()
+  // Single fetch — agent names come denormalized from the join.
+  const commsQ = useCommissionsList()
   const commissions = commsQ.data ?? []
-  const agentNameMap = useMemo(
-    () => new Map((agentsQ.data ?? []).map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])),
-    [agentsQ.data],
-  )
   const loading = commsQ.isLoading
+
+  const agentNameOf = (c: any) => {
+    const a = c.deal_agents?.agents
+    return a?.profiles?.name ?? a?.code ?? '—'
+  }
 
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState('All')
   const [agentFilter, setAgentFilter] = useState('')
 
   const allAgentNames = useMemo(() =>
-    Array.from(new Set(commissions
-      .map(c => agentNameMap.get(c.deal_agents?.agent_id ?? '') ?? '')
-      .filter(Boolean) as string[])).sort(),
-    [commissions, agentNameMap],
+    Array.from(new Set(commissions.map(agentNameOf).filter(Boolean))).sort(),
+    [commissions],
   )
 
   const filtered = useMemo(() => commissions.filter(c => {
     if (tab !== 'All' && c.status !== tab) return false
-    if (agentFilter && agentNameMap.get(c.deal_agents?.agent_id ?? '') !== agentFilter) return false
+    if (agentFilter && agentNameOf(c) !== agentFilter) return false
     const q = search.toLowerCase()
     return !q || c.id.toLowerCase().includes(q) || commClient(c).toLowerCase().includes(q) ||
       (commDeal(c)?.id ?? '').toLowerCase().includes(q)
-  }), [search, tab, agentFilter, commissions, agentNameMap])
+  }), [search, tab, agentFilter, commissions])
 
   const totalValue = filtered.reduce((a, c) => a + Number(c.total_amount), 0)
 
@@ -98,8 +97,7 @@ export default function CommissionsPage() {
               </thead>
               <tbody>
                 {filtered.map(c => {
-                  const agent = commAgent(c)
-                  const agentName = agentNameMap.get(c.deal_agents?.agent_id ?? '') ?? agent?.code ?? '—'
+                  const agentName = agentNameOf(c)
                   return (
                     <tr key={c.id} onClick={() => router.push(`/commissions/${c.id}`)} onMouseEnter={() => prefetch.commission(qc, c.id)} style={{ cursor: 'pointer' }}>
                       <td><span className="mono text-xs" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{c.id.slice(0, 8)}</span></td>

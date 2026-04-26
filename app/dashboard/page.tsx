@@ -1,100 +1,58 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { dealStatusLabel } from '@/lib/api'
-import {
-  useDealsList, useCommissionsList, useAgentsList,
-  useReportsAgents, useReportsMonthlyBatch, prefetch,
-} from '@/lib/queries'
-import { Avatar } from '@/components/ui/avatar'
-import { StatusPill } from '@/components/ui/pill'
+import { useDashboardSummary } from '@/lib/queries'
+import { Avatar, AvatarStack } from '@/components/ui/avatar'
 import { AreaChart, Donut, Sparkline } from '@/components/ui/charts'
-import { AvatarStack } from '@/components/ui/avatar'
 import { useShell } from '@/components/shell/shell-provider'
 
-const now = new Date()
-const monthsAsc = Array.from({ length: 6 }, (_, i) => {
-  const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
-  return {
-    key:   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-    label: d.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
-  }
-})
-const monthKeys = monthsAsc.map(m => m.key)
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const monthLabel = (key: string) => {
+  const [y, m] = key.split('-')
+  return `${MONTH_NAMES[Number(m) - 1]} '${y.slice(2)}`
+}
 
 export default function DashboardPage() {
   const [period, setPeriod] = useState('6M')
   const [kpiIdx, setKpiIdx] = useState(0)
-  const qc = useQueryClient()
   const { setNewDealOpen } = useShell()
 
-  const dealsQ    = useDealsList()
-  const commsQ    = useCommissionsList()
-  const agentsQ   = useAgentsList()
-  const perfQ     = useReportsAgents()
-  const monthlyQ  = useReportsMonthlyBatch(monthKeys)
+  // ★ ONE round-trip — Postgres function aggregates everything we need.
+  const summaryQ = useDashboardSummary()
+  const summary  = summaryQ.data
+  const loading  = summaryQ.isLoading
 
-  const deals       = dealsQ.data   ?? []
-  const commissions = commsQ.data   ?? []
-  const agentPerf   = perfQ.data?.agents ?? []
-
-  const agentNameMap = useMemo(
-    () => new Map((agentsQ.data ?? []).map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])),
-    [agentsQ.data],
-  )
-
-  const monthlyData = useMemo(() => {
-    const batch = (monthlyQ.data ?? {}) as Record<string, { summaries?: { total_earned: number }[] }>
-    return monthsAsc.map(m => ({
-      x:      m.label,
-      y:      batch[m.key]?.summaries?.reduce((a, s) => a + Number(s.total_earned), 0) ?? 0,
-      volume: deals
-        .filter(d => d.funds_transferred_at?.startsWith(m.key))
-        .reduce((a, d) => a + Number(d.transferred_amount ?? 0), 0),
-    }))
-  }, [monthlyQ.data, deals])
-
-  const loading = dealsQ.isLoading || commsQ.isLoading || perfQ.isLoading || monthlyQ.isLoading
-
-  const fundedDeals  = deals.filter(d => d.status === 'FUNDS_TRANSFERRED')
-  const ytdComm      = commissions.reduce((a, c) => a + Number(c.total_amount), 0)
-  const ytdVolume    = fundedDeals.reduce((a, d) => a + Number(d.transferred_amount ?? 0), 0)
-  const openComm     = commissions.filter(c => c.status !== 'PAID').reduce((a, c) => a + Number(c.total_amount), 0)
-  const pendingCount = commissions.filter(c => c.status === 'RESERVED').length
+  const k = summary?.kpis ?? { funded_count: 0, pending_count: 0, funded_volume: 0 }
+  const totalCommissions = summary?.monthly?.reduce((a, m) => a + Number(m.earned), 0) ?? 0
+  const monthlyData = (summary?.monthly ?? []).map(m => ({
+    x:      monthLabel(m.month),
+    y:      Number(m.earned),
+    volume: Number(m.volume),
+  }))
 
   const kpis = [
-    { label: 'Total commissions YTD',  val: fmt.moneyK(ytdComm),           delta: `${commissions.length} records`, pos: true,  spark: monthlyData.map(m => m.y) },
-    { label: 'Funded volume YTD',      val: fmt.moneyK(ytdVolume),          delta: `${fundedDeals.length} deals`,   pos: true,  spark: monthlyData.map(m => m.volume) },
-    { label: 'Open commissions',        val: fmt.moneyK(openComm),           delta: `${pendingCount} reserved`,      pos: false, spark: [] },
-    { label: 'Avg deal size',           val: fmt.moneyK(fundedDeals.length ? ytdVolume / fundedDeals.length : 0), delta: `${fundedDeals.length} deals`, pos: true, spark: [] },
+    { label: 'Commissions (6mo)',  val: fmt.moneyK(totalCommissions),       delta: '6 months',                     pos: true,  spark: monthlyData.map(m => m.y) },
+    { label: 'Funded volume',      val: fmt.moneyK(Number(k.funded_volume)), delta: `${k.funded_count} deals`,      pos: true,  spark: monthlyData.map(m => m.volume) },
+    { label: 'Pending deals',      val: String(k.pending_count),             delta: 'in pipeline',                  pos: false, spark: [] },
+    { label: 'Avg deal size',      val: fmt.moneyK(k.funded_count ? Number(k.funded_volume) / k.funded_count : 0), delta: `${k.funded_count} deals`, pos: true, spark: [] },
   ]
 
-  // By funder (from funded deals)
-  const funderMap: Record<string, { name: string; value: number }> = {}
-  fundedDeals.forEach(d => {
-    const name = d.funders?.name ?? 'Unknown'
-    if (!funderMap[name]) funderMap[name] = { name, value: 0 }
-    funderMap[name].value += Number(d.transferred_amount ?? 0)
-  })
-  const byFunder = Object.values(funderMap)
-    .sort((a, b) => b.value - a.value)
-    .map((f, i) => ({
-      label: f.name, value: f.value,
-      color: [`var(--accent)`, 'oklch(0.62 0.17 150)', 'oklch(0.65 0.17 20)', 'oklch(0.6 0.17 220)', 'oklch(0.7 0.15 60)'][i % 5],
-    }))
+  const palette = ['var(--accent)', 'oklch(0.62 0.17 150)', 'oklch(0.65 0.17 20)', 'oklch(0.6 0.17 220)', 'oklch(0.7 0.15 60)']
+  const byFunder = (summary?.by_funder ?? []).map((f, i) => ({
+    label: f.name, value: Number(f.value), color: palette[i % palette.length],
+  }))
 
-  const topAgents = agentPerf.slice().sort((a, b) => b.total_commissions - a.total_commissions).slice(0, 5)
-  const recentDeals = deals.slice(0, 8)
+  const topAgents   = summary?.top_agents ?? []
+  const recentDeals = summary?.recent_deals ?? []
 
   return (
     <div className="page wide" style={{ padding: '20px 28px 80px' }}>
       <div className="page-head">
         <div>
           <h1>Dashboard</h1>
-          <p>{loading ? 'Loading…' : `${fundedDeals.length} funded deals · ${fmt.moneyK(ytdComm)} in commissions`}</p>
+          <p>{loading ? 'Loading…' : `${k.funded_count} funded deals · ${fmt.moneyK(totalCommissions)} commissions (6m)`}</p>
         </div>
         <div className="actions">
           <div className="seg">
@@ -107,27 +65,25 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI strip */}
       <div className="kpi-grid">
-        {kpis.map((k, i) => (
+        {kpis.map((kp, i) => (
           <div key={i} className={`kpi ${kpiIdx === i ? 'active' : ''}`} onClick={() => setKpiIdx(i)}>
-            <div className="kpi-label">{k.label}</div>
-            <div className="kpi-val">{loading ? '—' : k.val}</div>
+            <div className="kpi-label">{kp.label}</div>
+            <div className="kpi-val">{loading ? '—' : kp.val}</div>
             <div className="kpi-delta">
-              <span className={`chg ${k.pos ? 'pos' : 'neg'}`}>
-                {k.pos ? <Icons.ArrowUp /> : <Icons.ArrowDown />}{k.delta}
+              <span className={`chg ${kp.pos ? 'pos' : 'neg'}`}>
+                {kp.pos ? <Icons.ArrowUp /> : <Icons.ArrowDown />}{kp.delta}
               </span>
             </div>
-            {k.spark.length > 0 && (
+            {kp.spark.length > 0 && (
               <div className="kpi-spark">
-                <Sparkline data={k.spark} color={kpiIdx === i ? 'var(--accent)' : 'var(--ink-4)'} width={60} height={24} />
+                <Sparkline data={kp.spark} color={kpiIdx === i ? 'var(--accent)' : 'var(--ink-4)'} width={60} height={24} />
               </div>
             )}
           </div>
         ))}
       </div>
 
-      {/* Main chart + donut */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 20 }}>
         <div className="card">
           <div className="card-head">
@@ -173,7 +129,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Bottom row */}
       <div className="grid-3" style={{ marginBottom: 20 }}>
         <div className="card">
           <div className="card-head">
@@ -194,7 +149,7 @@ export default function DashboardPage() {
                   <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{a.total_deals} deals</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div className="num" style={{ fontSize: 13, fontWeight: 500 }}>{fmt.moneyK(a.total_commissions)}</div>
+                  <div className="num" style={{ fontSize: 13, fontWeight: 500 }}>{fmt.moneyK(Number(a.total_commissions))}</div>
                   <div style={{ fontSize: 10.5, color: 'var(--ink-4)' }}>earned</div>
                 </div>
               </div>
@@ -213,24 +168,23 @@ export default function DashboardPage() {
                 <thead>
                   <tr>
                     <th>Deal ID</th><th>Client</th><th>Funder</th>
-                    <th className="num">Amount</th><th>Agents</th><th>Status</th><th>Date</th>
+                    <th className="num">Amount</th><th>Agents</th><th>Date</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)', fontSize: 12 }}>Loading…</td></tr>
+                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)', fontSize: 12 }}>Loading…</td></tr>
                   ) : recentDeals.length === 0 ? (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)', fontSize: 12 }}>No deals yet</td></tr>
-                  ) : recentDeals.map(d => (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)', fontSize: 12 }}>No deals yet</td></tr>
+                  ) : recentDeals.map((d: any) => (
                     <tr key={d.id}>
                       <td><span className="mono text-xs" style={{ color: 'var(--accent-ink)', fontWeight: 500 }}>{d.id.slice(0, 8)}</span></td>
-                      <td><span className="strong">{d.accounts?.name ?? '—'}</span></td>
-                      <td className="muted">{d.funders?.name ?? '—'}</td>
+                      <td><span className="strong">{d.account?.name ?? '—'}</span></td>
+                      <td className="muted">{d.funder?.name ?? '—'}</td>
                       <td className="num">{fmt.money(Number(d.transferred_amount ?? 0))}</td>
                       <td>
-                        <AvatarStack items={(d.deal_agents ?? []).map(da => ({ name: agentNameMap.get(da.agent_id) ?? '?', hue: 180 }))} />
+                        <AvatarStack items={(d.agents ?? []).map((a: any) => ({ name: a.name ?? '?', hue: 180 }))} />
                       </td>
-                      <td><StatusPill status={dealStatusLabel(d.status)} /></td>
                       <td className="muted-num">{d.funds_transferred_at ? fmt.dateShort(d.funds_transferred_at) : fmt.dateShort(d.created_at)}</td>
                     </tr>
                   ))}

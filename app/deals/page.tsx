@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, type DbDeal } from '@/lib/api'
-import { useDealsList, useAgentsList, invalidate, prefetch } from '@/lib/queries'
+import { useDealsList, invalidate, prefetch } from '@/lib/queries'
 import { useQueryClient } from '@tanstack/react-query'
 import { StatusPill } from '@/components/ui/pill'
 import { AvatarStack } from '@/components/ui/avatar'
@@ -26,8 +26,11 @@ const dealTab    = (d: DbDeal) => TAB_BY_STATUS[d.status] ?? 'Pending'
 const dealAmount = (d: DbDeal) => Number(d.transferred_amount ?? d.payback_amount ?? 0)
 const dealClient = (d: DbDeal) => d.accounts?.name ?? '—'
 const dealFunder = (d: DbDeal) => d.funders?.name ?? '—'
-const dealAgentNames = (d: DbDeal, agentMap: Map<string, string>) =>
-  (d.deal_agents ?? []).map(da => agentMap.get(da.agent_id) ?? '—')
+const dealAgentName = (da: any) =>
+  da.agents?.profiles?.name ?? da.agents?.code ?? '—'
+
+const dealAgentNames = (d: DbDeal) =>
+  (d.deal_agents ?? []).map(dealAgentName)
 
 function exportCSV(rows: DbDeal[]) {
   const headers = ['Deal ID', 'Client', 'Funder', 'Amount', 'Status', 'Funded Date', 'Created']
@@ -119,13 +122,9 @@ export default function DealsPage() {
   const qc = useQueryClient()
   const { setNewDealOpen } = useShell()
 
-  const dealsQ  = useDealsList()
-  const agentsQ = useAgentsList()
-  const deals    = dealsQ.data ?? []
-  const agentMap = useMemo(
-    () => new Map((agentsQ.data ?? []).map(a => [a.id, a.profiles?.name ?? a.code ?? '—'])),
-    [agentsQ.data],
-  )
+  // Single fetch — agent names come denormalized from the join.
+  const dealsQ = useDealsList()
+  const deals   = dealsQ.data ?? []
   const loading = dealsQ.isLoading
   const refresh = () => invalidate.deals(qc)
 
@@ -166,7 +165,7 @@ export default function DealsPage() {
         || dealClient(d).toLowerCase().includes(q)
         || dealFunder(d).toLowerCase().includes(q)
         || dealStatusLabel(d.status).toLowerCase().includes(q)
-        || dealAgentNames(d, agentMap).some(n => n.toLowerCase().includes(q))
+        || dealAgentNames(d).some(n => n.toLowerCase().includes(q))
       if (!matchSearch) return false
     }
 
@@ -377,7 +376,7 @@ export default function DealsPage() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTop: '1px solid var(--line)' }}>
-                <AvatarStack items={(d.deal_agents ?? []).map(da => ({ name: agentMap.get(da.agent_id) ?? '?', hue: 180 }))} />
+                <AvatarStack items={(d.deal_agents ?? []).map(da => ({ name: dealAgentName(da), hue: 180 }))} />
                 <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
                   {d.funds_transferred_at ? `Funded ${fmt.dateShort(d.funds_transferred_at)}` : `Created ${fmt.dateShort(d.created_at)}`}
                 </span>
@@ -429,7 +428,7 @@ export default function DealsPage() {
                     <td className="muted" style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dealFunder(d)}</td>
                     <td className="num">{fmt.money(dealAmount(d))}</td>
                     <td>
-                      <AvatarStack items={(d.deal_agents ?? []).map(da => ({ name: agentMap.get(da.agent_id) ?? '?', hue: 180 }))} />
+                      <AvatarStack items={(d.deal_agents ?? []).map(da => ({ name: dealAgentName(da), hue: 180 }))} />
                     </td>
                     <td><StatusPill status={dealStatusLabel(d.status)} /></td>
                     <td className="muted-num">{d.funds_transferred_at ? fmt.dateShort(d.funds_transferred_at) : '—'}</td>

@@ -4,7 +4,7 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import {
   dbDeals, dbCommissions, dbAgents, dbAccounts, dbFunders, dbPayments,
-  dbRules, dbNotes,
+  dbRules, dbNotes, dbRpc,
 } from './db'
 import { api } from './api'
 
@@ -56,6 +56,10 @@ export const qk = {
   user: {
     me: () => ['user', 'me'] as const,
   },
+  page: {
+    dashboard: () => ['page', 'dashboard'] as const,
+    payout:    () => ['page', 'payout'] as const,
+  },
 } as const
 
 // ─── Helper: unwrap { data, error } shape into a thrown Error or value ─────
@@ -96,6 +100,14 @@ export const useGlobalRules = (funderId?: string) =>
   useQuery({ queryKey: qk.rules.globalList(funderId), queryFn: () => unwrap(dbRules.globalList({ funder_id: funderId })) })
 export const useAgentRules  = (params?: { funder_id?: string; agent_id?: string }) =>
   useQuery({ queryKey: qk.rules.agentList(params?.funder_id, params?.agent_id), queryFn: () => unwrap(dbRules.agentList(params)) })
+
+// ─── Page-level RPC hooks (one round-trip for the entire page) ────────────
+export const useDashboardSummary = () => useQuery({
+  queryKey: qk.page.dashboard(), queryFn: () => unwrap(dbRpc.dashboardSummary()),
+})
+export const usePayoutSummary = () => useQuery({
+  queryKey: qk.page.payout(), queryFn: () => unwrap(dbRpc.payoutSummary()),
+})
 
 // ─── Edge-Function-backed hooks (kept for complex compute) ─────────────────
 export const useAgentLedger = (id: string) => useQuery({

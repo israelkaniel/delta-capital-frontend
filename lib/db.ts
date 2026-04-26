@@ -30,13 +30,15 @@ function wrap<T>(p: any): Promise<Result<T>> {
 }
 
 // ─── Deals ──────────────────────────────────────────────────────────────────
+// List view denormalizes agent code+name so the page renders from a single
+// round-trip — no parallel useAgentsList needed.
 const dealListSelect = `
   id, status, transferred_amount, payback_amount,
   funds_transferred_at, external_id, created_at, updated_at,
   account_id, funder_id,
   accounts(id, name),
   funders(id, name),
-  deal_agents(id, agent_id, share)
+  deal_agents(id, agent_id, share, agents(id, code, profiles:user_id(name)))
 `
 
 const dealDetailSelect = `
@@ -68,12 +70,14 @@ export const dbDeals = {
 }
 
 // ─── Commissions ───────────────────────────────────────────────────────────
+// List view denormalizes agent name + client name so the page renders from a
+// single round-trip — no parallel useAgentsList needed.
 const commissionListSelect = `
   id, deal_agent_id, calculated_at, base_amount, rate,
   total_amount, released_amount, reserved_amount, reversed_amount, status,
   deal_agents(
     id, share, agent_id,
-    agents(id, code),
+    agents(id, code, profiles:user_id(name)),
     deals(id, status, accounts(name))
   )
 `
@@ -183,6 +187,27 @@ export const dbRules = {
     if (params?.funder_id) q = q.eq('funder_id', params.funder_id)
     return wrap<DbAgentRule[]>(q)
   },
+}
+
+// ─── Page-level RPCs (one round-trip per page) ─────────────────────────────
+export interface DashboardSummary {
+  kpis:         { funded_count: number; pending_count: number; funded_volume: number }
+  recent_deals: any[]
+  by_funder:    { id: string; name: string; value: number }[]
+  top_agents:   { agent_id: string; agent_code: string | null; agent_name: string; total_deals: number; total_commissions: number }[]
+  monthly:      { month: string; earned: number; volume: number }[]
+}
+export interface PayoutSummary {
+  agents: {
+    id: string; code: string | null; is_active: boolean; name: string; email: string | null
+    total_commissions: number; reserved_amount_raw: number; reversed_amount: number; paid_amount: number
+  }[]
+  payments: { id: string; agent_id: string; amount: number; payment_date: string; reference: string | null; agent_name: string }[]
+}
+
+export const dbRpc = {
+  dashboardSummary: () => wrap<DashboardSummary>(supabase.rpc('dashboard_summary')),
+  payoutSummary:    () => wrap<PayoutSummary>(supabase.rpc('payout_summary')),
 }
 
 // ─── Notes (deal_notes) ────────────────────────────────────────────────────
