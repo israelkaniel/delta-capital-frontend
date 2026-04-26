@@ -67,10 +67,13 @@ export function Sidebar() {
     })
   }, [])
 
+  // Only fetch counts once per session — not on every page navigation.
+  // (Counts may be slightly stale after mutations; that's acceptable for sidebar badges.)
   useEffect(() => {
     if (isAuthPage) return
     refresh()
-  }, [refresh, pathname, isAuthPage])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthPage])
 
   // Load logged-in user info from Supabase session
   useEffect(() => {
