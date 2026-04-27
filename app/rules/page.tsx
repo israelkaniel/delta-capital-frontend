@@ -218,7 +218,7 @@ export default function RulesPage() {
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
                               {showAgentLabel && <span style={{ fontWeight: 500, fontSize: 13 }}>{g.agentName}</span>}
-                              <Pill tone={r.mode === 'REPLACE' ? 'warn' : 'pos'}>{r.mode === 'ADD_ON' ? '+ Add on' : 'Replaces global'}</Pill>
+                              <Pill tone="warn">Override</Pill>
                               <Pill tone="info">{r.type === 'FIXED_PERCENT' ? 'Fixed' : 'Tiered'}</Pill>
                               {!isActive(r) && <Pill tone="default">Inactive</Pill>}
                             </div>
@@ -323,7 +323,7 @@ export default function RulesPage() {
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
                           <span style={{ fontWeight: 500, fontSize: 13 }}>{f?.name ?? 'Funder'}</span>
-                          <Pill tone={r.mode === 'REPLACE' ? 'warn' : 'accent'}>{r.mode === 'ADD_ON' ? '+ Add on' : 'Replaces global'}</Pill>
+                          <Pill tone="warn">Override</Pill>
                           <Pill tone="info">{r.type === 'FIXED_PERCENT' ? 'Fixed' : 'Tiered'}</Pill>
                           {!isActive(r) && <Pill tone="default">Inactive</Pill>}
                         </div>

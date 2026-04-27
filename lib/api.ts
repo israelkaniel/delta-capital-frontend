@@ -65,7 +65,7 @@ export interface DbGlobalRule {
 }
 
 export interface DbAgentRule {
-  id: string; agent_id: string; funder_id: string; mode: string; type: string
+  id: string; agent_id: string; funder_id: string; type: string
   fixed_rate: number | null; valid_from: string; valid_to: string | null; notes?: string
   agent_commission_tiers?: { id: string; min_amount: number; max_amount: number | null; rate: number }[]
 }

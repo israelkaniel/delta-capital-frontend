@@ -21,7 +21,6 @@ type AgentState = {
   scope: 'agent'
   agent_id: string
   funder_id: string
-  mode: 'REPLACE' | 'ADD_ON'
   type: 'FIXED_PERCENT' | 'TIERED'
   fixed_rate: string
   tiers: Tier[]
@@ -49,7 +48,6 @@ const emptyAgent = (): AgentState => ({
   scope: 'agent',
   agent_id: '',
   funder_id: '',
-  mode: 'ADD_ON',
   type: 'FIXED_PERCENT',
   fixed_rate: '',
   tiers: [{ min_amount: 0, max_amount: null, rate: 0 }],
@@ -96,7 +94,6 @@ export function RuleEditor({
           scope: 'agent',
           agent_id: a.agent_id,
           funder_id: a.funder_id,
-          mode: a.mode as 'REPLACE' | 'ADD_ON',
           type: a.type as 'FIXED_PERCENT' | 'TIERED',
           fixed_rate: a.fixed_rate != null ? String(a.fixed_rate) : '',
           tiers: (a.agent_commission_tiers ?? []).map(t => ({
@@ -133,7 +130,6 @@ export function RuleEditor({
 
       if (state.scope === 'agent') {
         body.agent_id = state.agent_id
-        body.mode = state.mode
       }
 
       if (!body.funder_id) throw new Error('Funder is required')
@@ -206,20 +202,15 @@ export function RuleEditor({
         </div>
 
         {state.scope === 'agent' && (
-          <Field label="Mode">
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['ADD_ON', 'REPLACE'] as const).map(m => (
-                <button
-                  key={m}
-                  className={`btn sm ${state.mode === m ? 'primary' : ''}`}
-                  onClick={() => setState({ ...state, mode: m })}
-                  type="button"
-                >
-                  {m === 'ADD_ON' ? 'Add on top of global' : 'Replace global'}
-                </button>
-              ))}
-            </div>
-          </Field>
+          <div style={{
+            background: 'var(--info-soft, var(--bg-sunk))',
+            border: '1px solid var(--line)',
+            color: 'var(--ink-3)',
+            padding: '10px 12px', borderRadius: 8, fontSize: 12.5,
+          }}>
+            Agent-specific rules <strong>fully replace</strong> the org-wide
+            rule for this funder. There is no add-on / combination logic.
+          </div>
         )}
 
         <Field label="Rule type">
