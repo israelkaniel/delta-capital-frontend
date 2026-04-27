@@ -509,7 +509,7 @@ export default function ReportsPage() {
       )}
 
       {tab === 'funnel' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 16 }}>
           <div className="card">
             <div className="card-head"><h3>Distribution</h3></div>
             <div className="card-body" style={{ display: 'flex', justifyContent: 'center' }}>

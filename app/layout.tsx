@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { ShellProvider } from '@/components/shell/shell-provider'
+import { AppShell } from '@/components/shell/app-shell'
 import { Sidebar } from '@/components/shell/sidebar'
 import { Topbar } from '@/components/shell/topbar'
 import { ShellOverlays } from '@/components/shell/drawers'
@@ -17,11 +18,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <QueryProvider>
           <ToastProvider>
             <ShellProvider>
-              <div className="app">
+              <AppShell>
                 <Sidebar />
                 <Topbar />
                 <main className="main">{children}</main>
-              </div>
+              </AppShell>
               <ShellOverlays />
               <TweaksPanel />
             </ShellProvider>

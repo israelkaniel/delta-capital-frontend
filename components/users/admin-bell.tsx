@@ -51,7 +51,7 @@ export function AdminBell() {
       {open && (
         <div style={{
           position: 'absolute', right: 0, top: 'calc(100% + 6px)',
-          width: 360, maxHeight: 460, overflowY: 'auto',
+          width: 'min(360px, calc(100vw - 24px))', maxHeight: 460, overflowY: 'auto',
           background: 'var(--bg)', border: '1px solid var(--line)',
           borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,0.12)',
           zIndex: 60,

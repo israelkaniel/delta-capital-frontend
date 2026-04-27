@@ -44,4 +44,5 @@ export const Icons = {
   Trash:          (p: P) => <svg viewBox="0 0 16 16" fill="none" width="16" height="16" {...p}><path d="M3 4h10M6 4V2.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V4M5 4l.5 9h5L11 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   MoreHorizontal: (p: P) => <svg viewBox="0 0 16 16" fill="none" width="16" height="16" {...p}><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg>,
   Ledger:         (p: P) => <svg viewBox="0 0 16 16" fill="none" width="16" height="16" {...p}><rect x="3" y="2" width="10" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><path d="M3 5h1M3 8h1M3 10.5h1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+  Menu:           (p: P) => <svg viewBox="0 0 16 16" fill="none" width="16" height="16" {...p}><path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
 }

@@ -27,7 +27,7 @@ const crumbs: Record<string, string[]> = {
 
 export function Topbar() {
   const pathname = usePathname()
-  const { toggleTheme, tweaks, setNewDealOpen, cmdOpen, setCmdOpen } = useShell()
+  const { toggleTheme, tweaks, setNewDealOpen, cmdOpen, setCmdOpen, mobileNavOpen, setMobileNavOpen } = useShell()
   const isAdminPath = pathname.startsWith('/admin/')
   const breadcrumbs = crumbs[pathname]
     ?? (isAdminPath ? ['Administration'] : ['Workspace'])
@@ -63,6 +63,14 @@ export function Topbar() {
 
   return (
     <header className="topbar">
+      <button
+        className="tb-burger"
+        onClick={() => setMobileNavOpen(!mobileNavOpen)}
+        aria-label="Toggle navigation"
+        aria-expanded={mobileNavOpen}
+      >
+        <Icons.Menu />
+      </button>
       <div className="tb-crumbs">
         {breadcrumbs.map((c, i) => (
           <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

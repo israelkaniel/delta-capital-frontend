@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { api } from '@/lib/api'
 import { createClient } from '@/lib/supabase/client'
+import { useShell } from './shell-provider'
 
 type NavItem = { k: string; label: string; Icon: React.ComponentType<any>; countKey?: keyof Counts; adminOnly?: boolean }
 type NavGroup = { label: string; items: NavItem[] }
@@ -52,8 +53,11 @@ const groups: NavGroup[] = [
 export function Sidebar() {
   const pathname = usePathname()
   const isAuthPage = pathname === '/login'
+  const { setMobileNavOpen } = useShell()
   const [counts, setCounts] = useState<Counts | null>(null)
   const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null)
+
+  useEffect(() => { setMobileNavOpen(false) }, [pathname, setMobileNavOpen])
 
   const refresh = useCallback(async () => {
     const supabase = createClient()

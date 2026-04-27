@@ -355,7 +355,7 @@ export function NewDealModal({
         ))}
       </div>
 
-      <div className="modal-body" style={{ padding: 0, display: 'grid', gridTemplateColumns: '1fr 300px', overflow: 'hidden', flex: 1 }}>
+      <div className="modal-body new-deal-grid" style={{ padding: 0, overflow: 'hidden', flex: 1 }}>
         <div style={{ padding: 28, overflowY: 'auto' }}>
 
           {/* ── Step 1: Client ── */}

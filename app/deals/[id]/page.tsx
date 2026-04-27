@@ -232,7 +232,7 @@ export default function DealDetailPage() {
       </div>
 
       {tab === 'Overview' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(420px, 100%), 1fr))', gap: 16 }}>
           <div className="card">
             <div className="card-head"><h3>Deal details</h3></div>
             <div className="card-body" style={{ padding: 0 }}>

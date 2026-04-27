@@ -93,7 +93,7 @@ export default function ContactDetailPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 16, alignItems: 'start' }}>
         <div className="card">
           <div className="card-head"><h3>Profile</h3></div>
           <div className="card-body" style={{ padding: 0 }}>

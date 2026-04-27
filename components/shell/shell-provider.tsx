@@ -26,6 +26,8 @@ type ShellCtx = {
   setTweaksOpen: (v: boolean) => void
   cmdOpen: boolean
   setCmdOpen: (v: boolean) => void
+  mobileNavOpen: boolean
+  setMobileNavOpen: (v: boolean) => void
 }
 
 const Ctx = createContext<ShellCtx>(null!)
@@ -40,6 +42,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false)
   const [tweaksOpen, setTweaksOpen] = useState(false)
   const [cmdOpen, setCmdOpen] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', tweaks.theme)
@@ -64,6 +67,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       notifOpen, setNotifOpen,
       tweaksOpen, setTweaksOpen,
       cmdOpen, setCmdOpen,
+      mobileNavOpen, setMobileNavOpen,
     }}>
       {children}
     </Ctx.Provider>
