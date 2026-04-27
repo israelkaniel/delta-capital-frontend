@@ -12,7 +12,7 @@ import { createClient } from './supabase/client'
 import type {
   DbDeal, DbCommission, DbAgent, DbAccount, DbContact, DbFunder, DbPayment,
   DbCommissionReserve, DbDealAgent, DbGlobalRule, DbAgentRule, DbEmailLog,
-  DbAuditLog,
+  DbAuditLog, UsersAdminSummary, AuditAdminSummary,
 } from './api'
 
 const supabase = createClient()
@@ -147,6 +147,7 @@ export const dbAccounts = {
       contacts(*),
       deals(
         id, status, transferred_amount, payback_amount, funds_transferred_at,
+        created_at, updated_at,
         funders(id, name),
         deal_agents(share, agents(code, profiles:user_id(name)))
       )
@@ -306,6 +307,26 @@ export const dbRpc = {
   payoutSummary:    () => wrap<PayoutSummary>(supabase.rpc('payout_summary')),
   agentsSummary:    () => wrap<AgentsSummary>(supabase.rpc('agents_summary')),
   agentDashboard:   (id: string) => wrap<AgentDashboard>(supabase.rpc('agent_dashboard', { p_agent_id: id })),
+  usersAdminSummary: () => wrap<UsersAdminSummary>(supabase.rpc('users_admin_summary')),
+  auditAdminSummary: (filters: AuditFilters) => wrap<AuditAdminSummary>(supabase.rpc('audit_admin_summary', {
+    p_entity:  filters.entity  ?? null,
+    p_user_id: filters.userId  ?? null,
+    p_action:  filters.action  ?? null,
+    p_from:    filters.from    ?? null,
+    p_to:      filters.to      ?? null,
+    p_limit:   filters.limit   ?? 200,
+    p_offset:  filters.offset  ?? 0,
+  })),
+}
+
+export interface AuditFilters {
+  entity?: string | null
+  userId?: string | null
+  action?: string | null
+  from?:   string | null
+  to?:     string | null
+  limit?:  number
+  offset?: number
 }
 
 // ─── Notes (deal_notes) ────────────────────────────────────────────────────
@@ -324,7 +345,7 @@ type LedgerEntry = { agent_id: string; type: string; amount: number; created_at:
 export const dbLedger = {
   rawEntries: (agentId: string) => wrap<LedgerEntry[]>(
     supabase.from('ledger_entries')
-      .select('*, commissions(total_amount, status), payments(reference)')
+      .select('*, commissions(total_amount, status), payments(reference_number)')
       .eq('agent_id', agentId)
       .order('created_at', { ascending: false }),
   ),

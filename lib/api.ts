@@ -6,6 +6,50 @@ import { invokeFunction } from './supabase/functions'
 // ─── DB types (from Edge Function responses) ────────────────────────────────
 
 export interface DbProfile { id: string; name: string; email: string; role: string; is_active: boolean }
+
+export interface DbProfileAdmin extends DbProfile {
+  created_at:            string
+  last_login_at:         string | null
+  first_login_at:        string | null
+  revoked_at:            string | null
+  last_login_ip:         string | null
+  last_login_user_agent: string | null
+}
+
+export interface UsersAdminSummary {
+  users: DbProfileAdmin[]
+  kpis:  { total: number; active: number; pending: number; admins: number }
+}
+
+export interface DbAuditLogRow {
+  id:          string
+  entity:      string
+  entity_id:   string
+  action:      string
+  prev_value:  Record<string, unknown> | null
+  new_value:   Record<string, unknown> | null
+  notes:       string | null
+  created_at:  string
+  user_id:     string
+  user_name:   string | null
+  user_email:  string | null
+}
+
+export interface AuditAdminSummary {
+  rows:  DbAuditLogRow[]
+  total: number
+}
+
+export interface DbAdminNotification {
+  id:           string
+  kind:         string
+  title:        string
+  body:         string | null
+  entity:       string | null
+  entity_id:    string | null
+  created_at:   string
+  dismissed_by: string[]
+}
 export interface DbAgent   { id: string; code: string | null; is_active: boolean; profiles: DbProfile }
 
 export interface DbFunder {
@@ -319,6 +363,50 @@ export const api = {
     list: () => invokeFunction<object[]>('monthly-close'),
     execute: (month: number, year: number) =>
       invokeFunction<object>('monthly-close', { method: 'POST', body: { month, year } }),
+  },
+
+  // ── Users (Admin only) ──
+  users: {
+    list: () => invokeFunction<DbProfile[]>('users'),
+    invite: (body: { email: string; name: string; role: 'ADMIN' | 'FINANCE_MANAGER' | 'AGENT' }) =>
+      invokeFunction<DbProfile>('users/invite', { method: 'POST', body }),
+    update: (id: string, body: Partial<{ name: string; role: string; is_active: boolean }>) =>
+      invokeFunction<DbProfile>(`users/${id}`, { method: 'PATCH', body }),
+    resendInvite:  (id: string) => invokeFunction<{ ok: true }>(`users/${id}/resend-invite`,  { method: 'POST' }),
+    resetPassword: (id: string) => invokeFunction<{ ok: true }>(`users/${id}/reset-password`, { method: 'POST' }),
+    forceLogout:   (id: string) => invokeFunction<{ ok: true; revoked_at: string }>(`users/${id}/force-logout`, { method: 'POST' }),
+    softDelete:    (id: string) => invokeFunction<{ ok: true }>(`users/${id}`,                { method: 'DELETE' }),
+  },
+
+  // ── Admin notifications ──
+  adminNotifications: {
+    list:    () => invokeFunction<DbAdminNotification[]>('admin-notifications'),
+    dismiss: (id: string) => invokeFunction<{ ok: true }>(`admin-notifications/${id}/dismiss`, { method: 'POST' }),
+  },
+
+  // ── Email templates (Admin only, requires Management API token) ──
+  // Routed through Next.js API (frontend/app/api/admin/email-template) instead
+  // of a Supabase Edge Function — Supabase's gateway intermittently rejects
+  // the equivalent edge function with "JWT could not be decoded".
+  emailTemplates: {
+    getInvite:    async () => {
+      const r = await fetch('/api/admin/email-template')
+      const j = await r.json()
+      return r.ok
+        ? { data: j as { subject: string; content_html: string }, error: null }
+        : { data: null, error: new Error(j?.error ?? `HTTP ${r.status}`) }
+    },
+    updateInvite: async (body: { subject: string; content_html: string }) => {
+      const r = await fetch('/api/admin/email-template', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      })
+      const j = await r.json()
+      return r.ok
+        ? { data: j as { ok: true }, error: null }
+        : { data: null, error: new Error(j?.error ?? `HTTP ${r.status}`) }
+    },
   },
 }
 

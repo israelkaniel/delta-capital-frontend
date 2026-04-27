@@ -71,6 +71,12 @@ export const qk = {
     payout:          () => ['page', 'payout'] as const,
     agents:          () => ['page', 'agents'] as const,
     agentDashboard:  (id: string) => ['page', 'agent-dashboard', id] as const,
+    usersAdmin:      () => ['page', 'users-admin'] as const,
+    auditAdmin:      (filters: object) => ['page', 'audit-admin', filters] as const,
+  },
+  admin: {
+    notifications:   () => ['admin', 'notifications'] as const,
+    inviteTemplate:  () => ['admin', 'invite-template'] as const,
   },
 } as const
 
@@ -160,6 +166,40 @@ export const useAgentDashboard = (id: string) => useQuery({
   enabled: !!id,
 })
 
+export const useUsersAdminSummary = (enabled = true) => useQuery({
+  queryKey: qk.page.usersAdmin(),
+  queryFn: () => unwrap(dbRpc.usersAdminSummary()),
+  enabled,
+})
+
+import type { AuditFilters } from './db'
+export const useAuditAdminSummary = (filters: AuditFilters, enabled = true) => useQuery({
+  queryKey: qk.page.auditAdmin(filters),
+  queryFn: () => unwrap(dbRpc.auditAdminSummary(filters)),
+  enabled,
+})
+
+export const useAdminNotifications = (enabled = true) => useQuery({
+  queryKey: qk.admin.notifications(),
+  queryFn: async () => {
+    const r = await api.adminNotifications.list()
+    if (r.error) throw r.error
+    return r.data ?? []
+  },
+  enabled,
+  staleTime: 30_000,
+})
+
+export const useInviteTemplate = (enabled = true) => useQuery({
+  queryKey: qk.admin.inviteTemplate(),
+  queryFn: async () => {
+    const r = await api.emailTemplates.getInvite()
+    if (r.error) throw r.error
+    return r.data!
+  },
+  enabled,
+})
+
 // ─── Edge-Function-backed hooks (kept for complex compute) ─────────────────
 export const useAgentLedger = (id: string) => useQuery({
   queryKey: qk.agents.ledger(id),
@@ -233,4 +273,8 @@ export const invalidate = {
   },
   emailLogs:   (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.emailLogs.all }),
   rules:       (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.rules.all }),
+  usersAdmin:  (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.page.usersAdmin() }),
+  auditAdmin:  (qc: QueryClient) => qc.invalidateQueries({ queryKey: ['page', 'audit-admin'] }),
+  adminNotifications: (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.admin.notifications() }),
+  inviteTemplate:     (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.admin.inviteTemplate() }),
 }

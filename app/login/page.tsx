@@ -51,6 +51,14 @@ export default function LoginPage() {
       return
     }
 
+    // Record the login: stamps profiles.last_login_at and emits a first_login
+    // notification on the user's very first sign-in. Fire and forget — auth
+    // already succeeded; a failure here shouldn't block the user.
+    supabase.rpc('record_login', {
+      p_ip: '',
+      p_ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 240) : '',
+    }).then(() => {})
+
     router.push('/dashboard')
     router.refresh()
   }

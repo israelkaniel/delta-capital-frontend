@@ -1,8 +1,10 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { useShell } from './shell-provider'
+import { AdminBell } from '@/components/users/admin-bell'
+import { createClient } from '@/lib/supabase/client'
 
 const crumbs: Record<string, string[]> = {
   '/dashboard':   ['Workspace', 'Dashboard'],
@@ -18,13 +20,32 @@ const crumbs: Record<string, string[]> = {
   '/payout':      ['Workspace', 'Payout'],
   '/email-logs':  ['Workspace', 'Email Logs'],
   '/settings':    ['Workspace', 'Settings'],
+  '/admin/users':    ['Administration', 'Users'],
+  '/admin/audit':    ['Administration', 'Audit Log'],
+  '/admin/settings': ['Administration', 'Admin'],
 }
 
 export function Topbar() {
   const pathname = usePathname()
   const { toggleTheme, tweaks, setNewDealOpen, cmdOpen, setCmdOpen } = useShell()
-  const breadcrumbs = crumbs[pathname] ?? ['Workspace']
+  const isAdminPath = pathname.startsWith('/admin/')
+  const breadcrumbs = crumbs[pathname]
+    ?? (isAdminPath ? ['Administration'] : ['Workspace'])
   const isAuthPage = pathname === '/login'
+
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    if (isAuthPage) return
+    let cancelled = false
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (cancelled || !user) return
+      const { data: profile } = await supabase
+        .from('profiles').select('role').eq('id', user.id).maybeSingle()
+      if (!cancelled) setIsAdmin(profile?.role === 'ADMIN')
+    })
+    return () => { cancelled = true }
+  }, [isAuthPage])
 
   // Global ⌘K / Ctrl+K listener
   useEffect(() => {
@@ -71,6 +92,8 @@ export function Topbar() {
       </button>
 
       <div className="tb-divider" />
+
+      {isAdmin && <AdminBell />}
 
       <button className="tb-icon-btn" onClick={toggleTheme} title="Toggle theme">
         {tweaks.theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}
