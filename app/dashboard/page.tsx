@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
@@ -14,13 +14,33 @@ const monthLabel = (key: string) => {
   return `${MONTH_NAMES[Number(m) - 1]} '${y.slice(2)}`
 }
 
+type Period = '1M' | '3M' | '6M' | 'YTD' | '1Y'
+
+/** Convert a period selector into [from, to) ISO date strings. `to` is exclusive. */
+function periodToRange(p: Period): { from: string; to: string } {
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  const tomorrow = new Date(now); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+  const to = tomorrow.toISOString().slice(0, 10)
+  const from = new Date(now)
+  switch (p) {
+    case '1M':  from.setUTCMonth(from.getUTCMonth() - 1);  break
+    case '3M':  from.setUTCMonth(from.getUTCMonth() - 3);  break
+    case '6M':  from.setUTCMonth(from.getUTCMonth() - 6);  break
+    case 'YTD': from.setUTCMonth(0); from.setUTCDate(1);   break
+    case '1Y':  from.setUTCFullYear(from.getUTCFullYear() - 1); break
+  }
+  return { from: from.toISOString().slice(0, 10), to }
+}
+
 export default function DashboardPage() {
-  const [period, setPeriod] = useState('6M')
+  const [period, setPeriod] = useState<Period>('6M')
   const [kpiIdx, setKpiIdx] = useState(0)
   const { setNewDealOpen } = useShell()
 
-  // ★ ONE round-trip — Postgres function aggregates everything we need.
-  const summaryQ = useDashboardSummary()
+  // Period selector now drives the RPC. Hook key includes period -> auto refetch.
+  const range = useMemo(() => periodToRange(period), [period])
+  const summaryQ = useDashboardSummary(range)
   const summary  = summaryQ.data
   const loading  = summaryQ.isLoading
 
@@ -56,7 +76,7 @@ export default function DashboardPage() {
         </div>
         <div className="actions">
           <div className="seg">
-            {['1M','3M','6M','YTD','1Y'].map(p => (
+            {(['1M','3M','6M','YTD','1Y'] as const).map(p => (
               <button key={p} className={period === p ? 'active' : ''} onClick={() => setPeriod(p)}>{p}</button>
             ))}
           </div>

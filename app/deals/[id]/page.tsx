@@ -14,6 +14,7 @@ import { StatusPill, Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { useToast } from '@/components/ui/toast/toast'
 import { useUserRole } from '@/lib/use-user-role'
+import { DELETE_RECORDS_ENABLED } from '@/lib/feature-flags'
 import { DealStatusModal } from '@/components/deals/status-modal'
 import { EditDealModal } from '@/components/deals/edit-deal-modal'
 import { ManageAgentsModal } from '@/components/deals/manage-agents-modal'
@@ -66,13 +67,13 @@ export default function DealDetailPage() {
   const [tab, setTab] = useState<Tab>('Overview')
 
   const dealQ     = useDeal(id)
-  const notesQ    = useDealNotes(id, tab === 'Notes')
+  const notesQ    = useDealNotes(id, {}, tab === 'Notes')
   const timelineQ = useDealTimeline(id, tab === 'Timeline')
 
   const deal     = (dealQ.data as DealFull | null | undefined) ?? null
   const loading  = dealQ.isLoading
   const error    = dealQ.error?.message ?? null
-  const notes    = notesQ.data ?? []
+  const notes    = notesQ.data?.rows ?? []
   const timeline = timelineQ.data ?? null
   const timelineLoading = timelineQ.isLoading
 
@@ -140,7 +141,7 @@ export default function DealDetailPage() {
   const dealAgents  = deal.deal_agents ?? []
   const commissions = deal.commissions ?? []
   const contactsList = (account as any)?.contacts ?? []
-  const canDelete = role === 'ADMIN'
+  const canDelete = DELETE_RECORDS_ENABLED && role === 'ADMIN'
 
   const tabBadge = (t: Tab): number | undefined => {
     if (t === 'Commissions') return commissions.length

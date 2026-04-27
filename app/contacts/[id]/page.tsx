@@ -9,6 +9,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { api, type DbAccount, type DbContact } from '@/lib/api'
 import { dbAccounts } from '@/lib/db'
 import { ContactEditor } from '@/components/contacts/contact-editor'
+import { DELETE_RECORDS_ENABLED } from '@/lib/feature-flags'
 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 47) % 360
 
@@ -23,10 +24,10 @@ export default function ContactDetailPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    const res = await dbAccounts.list()
+    const res = await dbAccounts.list({ page_size: 500 })
     if (res.error) { setLoading(false); return }
-    for (const a of res.data ?? []) {
-      const found = (a.contacts ?? []).find(c => c.id === id)
+    for (const a of (res.data?.rows ?? [])) {
+      const found = (a.contacts ?? []).find((c: any) => c.id === id)
       if (found) {
         const detail = await dbAccounts.get(a.id)
         setContact({ ...(found as DbContact), account: detail.data ?? a })
@@ -85,7 +86,9 @@ export default function ContactDetailPage() {
         <div className="actions">
           {contact.email && <a href={`mailto:${contact.email}`} className="btn sm"><Icons.Mail /> Email</a>}
           <button className="btn sm" onClick={() => setEditorOpen(true)}><Icons.Edit /> Edit</button>
-          <button className="btn sm danger" onClick={remove}><Icons.Trash /> Remove</button>
+          {DELETE_RECORDS_ENABLED && (
+            <button className="btn sm danger" onClick={remove}><Icons.Trash /> Remove</button>
+          )}
           <button className="close-btn" onClick={() => router.back()}><Icons.X /> Close</button>
         </div>
       </div>

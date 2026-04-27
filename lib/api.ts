@@ -18,6 +18,7 @@ export interface DbProfileAdmin extends DbProfile {
 
 export interface UsersAdminSummary {
   users: DbProfileAdmin[]
+  total: number
   kpis:  { total: number; active: number; pending: number; admins: number }
 }
 

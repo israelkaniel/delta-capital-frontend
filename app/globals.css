@@ -481,6 +481,38 @@ textarea.input { height: auto; padding: 8px 10px; min-height: 70px; resize: vert
 .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
 .btn.lg { height: 36px; padding: 0 14px; font-size: 13px; }
 
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-line); }
+.btn:active { transform: translateY(0.5px); }
+.btn.primary { box-shadow: 0 1px 2px rgba(10,10,8,0.08), inset 0 1px 0 rgba(255,255,255,0.06); }
+.btn.primary:hover { box-shadow: 0 2px 6px rgba(10,10,8,0.12), inset 0 1px 0 rgba(255,255,255,0.08); }
+.btn:disabled, .btn[disabled] { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* BADGE — count badge for tabs, sidebar nav, and related-record tabs */
+.badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 6px;
+  margin-left: 6px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums; line-height: 1;
+  background: var(--bg-sunk); color: var(--ink-3);
+  border: 1px solid var(--line); transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.tab.active .badge { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tab:hover:not(.active) .badge { color: var(--ink-2); border-color: var(--line-strong); }
+.badge.accent { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-line); }
+.badge.dot { min-width: 6px; width: 6px; height: 6px; padding: 0; }
+
+/* SIDEBAR COUNT — refined, not a plain numeral */
+.sb-item .count {
+  margin-left: auto; padding: 1px 7px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--ink-4);
+  background: var(--bg-sunk); border: 1px solid var(--line);
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.sb-item:hover .count { color: var(--ink-3); border-color: var(--line-strong); }
+.sb-item.active .count { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
 /* PROGRESS */
 .progress { height: 6px; background: var(--bg-sunk); border-radius: 999px; overflow: hidden; }
 .progress > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.3s; }
@@ -752,3 +784,13 @@ textarea.input { height: auto; padding: 8px 10px; min-height: 70px; resize: vert
   padding: 9px 12px; cursor: pointer; transition: background 0.07s;
 }
 .search-drop-item:hover { background: var(--bg-hover); }
+
+/* ── PAGINATION ─────────────────────────────────────────────────── */
+.pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 4px; flex-wrap: wrap;
+}
+.pagination-range { font-size: 12px; color: var(--ink-3); }
+.pagination-controls { display: flex; align-items: center; gap: 4px; }
+.pagination-page { font-size: 12px; color: var(--ink-3); padding: 0 8px; white-space: nowrap; }
+.pagination-page strong { color: var(--ink); font-weight: 600; }

@@ -6,6 +6,8 @@ import { fmt } from '@/lib/fmt'
 import { api, dealStatusLabel, type DbDeal } from '@/lib/api'
 import { useDealsList, invalidate, prefetch } from '@/lib/queries'
 import { useQueryClient } from '@tanstack/react-query'
+import { usePageState } from '@/lib/pagination'
+import { Pagination } from '@/components/ui/pagination'
 import { StatusPill } from '@/components/ui/pill'
 import { AvatarStack } from '@/components/ui/avatar'
 import { useShell } from '@/components/shell/shell-provider'
@@ -13,6 +15,7 @@ import { useToast } from '@/components/ui/toast/toast'
 import { useUserRole } from '@/lib/use-user-role'
 import { AdvancedFilter, type FilterState } from '@/components/ui/advanced-filter'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DELETE_RECORDS_ENABLED } from '@/lib/feature-flags'
 
 const TAB_BY_STATUS: Record<string, string> = {
   FUNDS_TRANSFERRED: 'Active',
@@ -96,6 +99,30 @@ function RowMenu({ deal, canDelete, onDelete }: {
   )
 }
 
+function SortableTh<K extends string>({ label, k, sortKey, sortDir, onSort, numeric }: {
+  label: string
+  k: K
+  sortKey: K
+  sortDir: 'asc' | 'desc'
+  onSort: (k: K) => void
+  numeric?: boolean
+}) {
+  const active = sortKey === k
+  const arrow = active ? (sortDir === 'asc' ? '↑' : '↓') : ''
+  return (
+    <th
+      className={numeric ? 'num' : undefined}
+      onClick={() => onSort(k)}
+      style={{ cursor: 'pointer', userSelect: 'none' }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: active ? 'var(--ink)' : undefined }}>
+        {label}
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, opacity: active ? 1 : 0.3 }}>{arrow || '↕'}</span>
+      </span>
+    </th>
+  )
+}
+
 function MenuItem({ onClick, icon: Icon, children, tone }: {
   onClick: () => void
   icon: React.FC<React.SVGProps<SVGSVGElement>>
@@ -122,19 +149,41 @@ export default function DealsPage() {
   const qc = useQueryClient()
   const { setNewDealOpen } = useShell()
 
-  // Single fetch — agent names come denormalized from the join.
-  const dealsQ = useDealsList()
-  const deals   = dealsQ.data ?? []
+  const [tab, setTab] = useState('All')
+  const [search, setSearch] = useState('')
+  const { page, setPage, pageSize } = usePageState()
+
+  // Map tab -> server-side status filter (server pagination requires
+  // status to be applied at the DB layer, not client-side).
+  const STATUS_BY_TAB: Record<string, string | undefined> = {
+    All: undefined, Active: 'FUNDS_TRANSFERRED', Approved: 'APPROVED', Pending: 'PENDING', Declined: 'CANCELLED',
+  }
+  const dealsQ = useDealsList({
+    page, page_size: pageSize,
+    status: STATUS_BY_TAB[tab],
+    q: search.trim() || undefined,
+  })
+  const deals   = dealsQ.data?.rows ?? []
+  const total   = dealsQ.data?.total ?? 0
   const loading = dealsQ.isLoading
   const refresh = () => invalidate.deals(qc)
 
-  const [tab, setTab] = useState('All')
-  const [search, setSearch] = useState('')
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1) }, [tab, search, setPage])
+
   const [filters, setFilters] = useState<FilterState>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState<DbDeal | null>(null)
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [view, setView] = useState<'table' | 'tiles'>('table')
+
+  type SortKey = 'id' | 'client' | 'funder' | 'amount' | 'status' | 'funded' | 'created'
+  const [sortKey, setSortKey] = useState<SortKey>('created')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const onSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
 
   const funders = useMemo(() => {
     const map = new Map<string, string>()
@@ -200,12 +249,35 @@ export default function DealsPage() {
     return true
   }), [deals, tab, search, filters])
 
+  // Apply column sort over the filtered set. Re-runs whenever the filter
+  // result OR the sort key/direction changes.
+  const sortedFiltered = useMemo(() => {
+    const accessor: Record<SortKey, (d: DbDeal) => string | number> = {
+      id:      d => d.id,
+      client:  d => dealClient(d).toLowerCase(),
+      funder:  d => dealFunder(d).toLowerCase(),
+      amount:  d => dealAmount(d),
+      status:  d => dealStatusLabel(d.status),
+      funded:  d => d.funds_transferred_at ?? '',
+      created: d => d.created_at ?? '',
+    }
+    const get = accessor[sortKey]
+    const sign = sortDir === 'asc' ? 1 : -1
+    return [...filtered].sort((a, b) => {
+      const va = get(a); const vb = get(b)
+      if (va === vb) return 0
+      return va > vb ? sign : -sign
+    })
+  }, [filtered, sortKey, sortDir])
+
   const toggle = (id: string) => {
     const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s)
   }
   const toggleAll = () =>
     selected.size === filtered.length ? setSelected(new Set()) : setSelected(new Set(filtered.map(d => d.id)))
 
+  // KPI counts on this page show the *current page* — full-fleet metrics
+  // live on /dashboard, which has aggregate KPIs.
   const stats = {
     active:  deals.filter(d => d.status === 'FUNDS_TRANSFERRED').length,
     pending: deals.filter(d => d.status === 'PENDING').length,
@@ -238,7 +310,7 @@ export default function DealsPage() {
     refresh()
   }
 
-  const canDelete = role === 'ADMIN'
+  const canDelete = DELETE_RECORDS_ENABLED && role === 'ADMIN'
 
   return (
     <div className="page wide" style={{ padding: '20px 28px 80px' }}>
@@ -261,16 +333,13 @@ export default function DealsPage() {
         </div>
       </div>
 
-      {/* Status tabs */}
+      {/* Status tabs (active tab gets the full server-side total) */}
       <div className="tabs" style={{ marginBottom: 16 }}>
-        {TABS.map(s => {
-          const count = s === 'All' ? deals.length : deals.filter(d => dealTab(d) === s).length
-          return (
-            <button key={s} className={`tab ${tab === s ? 'active' : ''}`} onClick={() => setTab(s)}>
-              {s}{count > 0 && <span className="badge">{count}</span>}
-            </button>
-          )
-        })}
+        {TABS.map(s => (
+          <button key={s} className={`tab ${tab === s ? 'active' : ''}`} onClick={() => setTab(s)}>
+            {s}{tab === s && total > 0 && <span className="badge">{total}</span>}
+          </button>
+        ))}
       </div>
 
       {/* Search + advanced filter bar */}
@@ -350,7 +419,7 @@ export default function DealsPage() {
       {/* Tiles view */}
       {!loading && view === 'tiles' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginTop: 12 }}>
-          {filtered.map(d => (
+          {sortedFiltered.map(d => (
             <div
               key={d.id}
               className="card"
@@ -408,14 +477,19 @@ export default function DealsPage() {
                       onChange={toggleAll}
                     />
                   </th>
-                  <th>Deal ID</th><th>Client</th><th>Funder</th>
-                  <th className="num">Amount</th><th>Agents</th><th>Status</th>
-                  <th>Funded</th><th>Created</th>
+                  <SortableTh label="Deal ID" k="id"      sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortableTh label="Client"  k="client"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortableTh label="Funder"  k="funder"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortableTh label="Amount"  k="amount"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} numeric />
+                  <th>Agents</th>
+                  <SortableTh label="Status"  k="status"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortableTh label="Funded"  k="funded"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortableTh label="Created" k="created" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={{ width: 40 }} />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(d => (
+                {sortedFiltered.map(d => (
                   <tr key={d.id} className={selected.has(d.id) ? 'selected' : ''}
                       onClick={() => router.push(`/deals/${d.id}`)}
                       style={{ cursor: 'pointer' }}>
@@ -454,9 +528,8 @@ export default function DealsPage() {
             </table>
           </div>
         )}
-        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--ink-4)' }}>
-          <span>{filtered.length < deals.length ? `${filtered.length} of ${deals.length} deals` : `${deals.length} deals`}</span>
-          <span>Volume: <span className="num" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{fmt.money(filtered.reduce((a, d) => a + dealAmount(d), 0))}</span></span>
+        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--line)' }}>
+          <Pagination page={page} total={total} pageSize={pageSize} onPage={setPage} />
         </div>
       </div>
       )}

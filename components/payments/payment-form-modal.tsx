@@ -50,8 +50,8 @@ export function PaymentFormModal(props: PaymentFormModalProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
-  const agentsQ  = useAgentsList()
-  const agents   = agentsQ.data ?? []
+  const agentsQ  = useAgentsList({ page_size: 500 })
+  const agents   = agentsQ.data?.rows ?? []
   const summaryQ        = useAgentSummaryAvailable(agentId, !props.monthlySummaryId)
   const monthlyAvailQ   = useMonthlySummaryAvailable(props.monthlySummaryId ?? '', !!props.monthlySummaryId && props.monthlySummaryAvailable == null)
 

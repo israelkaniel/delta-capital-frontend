@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { useAuditAdminSummary, useUsersAdminSummary } from '@/lib/queries'
+import { Pagination } from '@/components/ui/pagination'
 import { Pill } from '@/components/ui/pill'
 import { exportCSV, csvFmt, todayStamp } from '@/lib/export-csv'
 
@@ -39,12 +40,12 @@ export default function AdminAuditPage() {
       action: action === 'all' ? null : action,
       userId: userId === 'all' ? null : userId,
       from, to: null,
-      limit: 200, offset,
+      limit: 100, offset,
     }
   }, [entity, action, userId, days, offset])
 
   const auditQ = useAuditAdminSummary(filters)
-  const usersQ = useUsersAdminSummary()
+  const usersQ = useUsersAdminSummary({ page_size: 500 })
 
   const rows  = auditQ.data?.rows  ?? []
   const total = auditQ.data?.total ?? 0
@@ -172,13 +173,14 @@ export default function AdminAuditPage() {
         )}
       </div>
 
-      {total > 200 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 14 }}>
-          <button className="btn sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 200))}>← Newer</button>
-          <span style={{ fontSize: 12, color: 'var(--ink-4)', alignSelf: 'center' }}>
-            {offset + 1}–{Math.min(offset + 200, total)} of {total}
-          </span>
-          <button className="btn sm" disabled={offset + 200 >= total} onClick={() => setOffset(offset + 200)}>Older →</button>
+      {total > 100 && (
+        <div style={{ marginTop: 14 }}>
+          <Pagination
+            page={Math.floor(offset / 100) + 1}
+            total={total}
+            pageSize={100}
+            onPage={p => setOffset((p - 1) * 100)}
+          />
         </div>
       )}
     </div>

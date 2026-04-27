@@ -9,8 +9,9 @@ import { useFundersList, useAgentsList, useGlobalRules, useAgentRules, invalidat
 import { RuleEditor } from '@/components/rules/rule-editor'
 
 const TABS = [
-  { key: 'global', label: 'Global rules' },
-  { key: 'agent',  label: 'Agent overrides' },
+  { key: 'byfunder', label: 'By funder' },
+  { key: 'global',   label: 'Global rules' },
+  { key: 'agent',    label: 'Agent overrides' },
 ] as const
 
 type TabKey = typeof TABS[number]['key']
@@ -33,20 +34,21 @@ const formatRate = (r: { type: string; fixed_rate: number | null; commission_tie
 
 export default function RulesPage() {
   const qc = useQueryClient()
-  const [tab, setTab] = useState<TabKey>('global')
+  const [tab, setTab] = useState<TabKey>('byfunder')
   const [showInactive, setShowInactive] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<DbGlobalRule | DbAgentRule | undefined>(undefined)
 
-  const fundersQ     = useFundersList()
-  const agentsQ      = useAgentsList()
-  const globalRulesQ = useGlobalRules()
-  const agentRulesQ  = useAgentRules()
+  // Rules pages aren't expected to exceed 100 entries — fetch first page only.
+  const fundersQ     = useFundersList({ page_size: 500 })
+  const agentsQ      = useAgentsList({ page_size: 500 })
+  const globalRulesQ = useGlobalRules({ page_size: 500 })
+  const agentRulesQ  = useAgentRules({ page_size: 500 })
 
-  const funders     = fundersQ.data ?? []
-  const agents      = agentsQ.data ?? []
-  const globalRules = globalRulesQ.data ?? []
-  const agentRules  = agentRulesQ.data ?? []
+  const funders     = fundersQ.data?.rows ?? []
+  const agents      = agentsQ.data?.rows ?? []
+  const globalRules = globalRulesQ.data?.rows ?? []
+  const agentRules  = agentRulesQ.data?.rows ?? []
   const loading     = fundersQ.isLoading || agentsQ.isLoading || globalRulesQ.isLoading || agentRulesQ.isLoading
   const refresh = () => {
     invalidate.rules(qc)
@@ -74,6 +76,28 @@ export default function RulesPage() {
     }
     return Array.from(map.values())
   }, [visibleGlobal, funders])
+
+  // Combined "by funder" view: for each funder, show its global rules
+  // and any agent overrides scoped to that funder, with mode clearly labeled.
+  const byFunder = useMemo(() => {
+    return funders.map(f => {
+      const fGlobals  = visibleGlobal.filter(r => r.funder_id === f.id)
+      const fOverrides = visibleAgent.filter(r => r.funder_id === f.id)
+      // Group overrides by agent
+      const overridesByAgent = new Map<string, { agentName: string; rules: DbAgentRule[] }>()
+      for (const r of fOverrides) {
+        const a = (r as any).agents ?? agents.find(x => x.id === r.agent_id)
+        const name = a?.profiles?.name ?? a?.code ?? r.agent_id.slice(0, 8)
+        if (!overridesByAgent.has(r.agent_id)) overridesByAgent.set(r.agent_id, { agentName: name, rules: [] })
+        overridesByAgent.get(r.agent_id)!.rules.push(r)
+      }
+      return {
+        funder: f,
+        globals: fGlobals,
+        overrides: Array.from(overridesByAgent.values()),
+      }
+    }).filter(g => g.globals.length > 0 || g.overrides.length > 0)
+  }, [funders, visibleGlobal, visibleAgent, agents])
 
   const groupedAgent = useMemo(() => {
     const map = new Map<string, { agent: { id: string; name: string }; rules: DbAgentRule[] }>()
@@ -109,8 +133,11 @@ export default function RulesPage() {
             <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
             Show inactive
           </label>
-          <button className="btn primary" onClick={onAdd}>
-            <Icons.Plus /> {tab === 'global' ? 'New global rule' : 'New agent override'}
+          <button className="btn" onClick={() => { setEditing(undefined); setTab('global'); setEditorOpen(true) }}>
+            <Icons.Plus /> Global rule
+          </button>
+          <button className="btn primary" onClick={() => { setEditing(undefined); setTab('agent'); setEditorOpen(true) }}>
+            <Icons.Plus /> Agent override
           </button>
         </div>
       </div>
@@ -119,10 +146,101 @@ export default function RulesPage() {
         {TABS.map(t => (
           <button key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
             {t.label}
-            <span className="badge">{t.key === 'global' ? globalRules.length : agentRules.length}</span>
+            <span className="badge">
+              {t.key === 'global'   ? globalRules.length :
+               t.key === 'agent'    ? agentRules.length :
+               byFunder.length}
+            </span>
           </button>
         ))}
       </div>
+
+      {tab === 'byfunder' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {byFunder.length === 0 && !loading && (
+            <div className="card"><div className="card-body" style={{ textAlign: 'center', color: 'var(--ink-4)' }}>
+              No rules configured yet.
+            </div></div>
+          )}
+          {byFunder.map(({ funder, globals, overrides }) => (
+            <div className="card" key={funder.id}>
+              <div className="card-head">
+                <div>
+                  <h3>{funder.name}</h3>
+                  <div className="sub">
+                    {globals.length} global · {overrides.reduce((s, o) => s + o.rules.length, 0)} agent override{overrides.length !== 1 ? 's' : ''}
+                    <span style={{ marginLeft: 12 }}>·</span>
+                    <span className="chip" style={{ marginLeft: 8 }}>{funder.commission_base === 'PAYBACK_AMOUNT' ? 'Payback base' : 'Transferred base'}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="card-body flush">
+                {globals.length === 0 ? (
+                  <div style={{ padding: '14px 18px', fontSize: 12, color: 'var(--ink-4)', borderBottom: overrides.length ? '1px solid var(--line)' : 'none' }}>
+                    No global rule defined — agent overrides apply only on top of zero base.
+                  </div>
+                ) : globals.map(r => (
+                  <div key={r.id} style={{
+                    padding: '14px 18px',
+                    borderBottom: '1px solid var(--line)',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    background: 'var(--bg-sunk)',
+                    opacity: isActive(r) ? 1 : 0.5,
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                        <Pill tone="accent">Global default</Pill>
+                        <Pill tone="info">{r.type === 'FIXED_PERCENT' ? 'Fixed' : 'Tiered'}</Pill>
+                        {!isActive(r) && <Pill tone="default">Inactive</Pill>}
+                        {r.notes && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{r.notes}</span>}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+                        Valid {fmt.dateShort(r.valid_from)} → {r.valid_to ? fmt.dateShort(r.valid_to) : '∞'}
+                      </div>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: 'right' }}>
+                      {formatRate(r)}
+                    </div>
+                    <button className="btn sm ghost" onClick={() => onEdit(r)}>Edit</button>
+                  </div>
+                ))}
+                {overrides.map((g, gi) => (
+                  <div key={g.agentName + gi}>
+                    {g.rules.map((r, i) => {
+                      const showAgentLabel = i === 0
+                      return (
+                        <div key={r.id} style={{
+                          padding: '14px 18px',
+                          borderBottom: i < g.rules.length - 1 || gi < overrides.length - 1 ? '1px solid var(--line)' : 'none',
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          opacity: isActive(r) ? 1 : 0.5,
+                        }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                              {showAgentLabel && <span style={{ fontWeight: 500, fontSize: 13 }}>{g.agentName}</span>}
+                              <Pill tone={r.mode === 'REPLACE' ? 'warn' : 'pos'}>{r.mode === 'ADD_ON' ? '+ Add on' : 'Replaces global'}</Pill>
+                              <Pill tone="info">{r.type === 'FIXED_PERCENT' ? 'Fixed' : 'Tiered'}</Pill>
+                              {!isActive(r) && <Pill tone="default">Inactive</Pill>}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+                              Valid {fmt.dateShort(r.valid_from)} → {r.valid_to ? fmt.dateShort(r.valid_to) : '∞'}
+                              {r.notes && <span style={{ marginLeft: 12 }}>{r.notes}</span>}
+                            </div>
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: 'right' }}>
+                            {formatRate(r)}
+                          </div>
+                          <button className="btn sm ghost" onClick={() => onEdit(r)}>Edit</button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {tab === 'global' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -236,7 +354,7 @@ export default function RulesPage() {
         open={editorOpen}
         onClose={() => setEditorOpen(false)}
         onDone={refresh}
-        scope={tab}
+        scope={tab === 'agent' ? 'agent' : 'global'}
         funders={funders}
         agents={agents}
         editing={editing}

@@ -1,36 +1,54 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { Pill } from '@/components/ui/pill'
-import { type DbFunder, type DbGlobalRule } from '@/lib/api'
-import { useFunder, useGlobalRules, invalidate } from '@/lib/queries'
+import { Pill, StatusPill } from '@/components/ui/pill'
+import { dealStatusLabel } from '@/lib/api'
+import { useFunder, useDealsList, invalidate } from '@/lib/queries'
 import { FunderEditor } from '@/components/funders/funder-editor'
 
 const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 53) % 360
-
-const isActiveRule = (r: { valid_from: string; valid_to: string | null }) => {
-  const now = new Date().toISOString().split('T')[0]
-  if (r.valid_from > now) return false
-  if (r.valid_to && r.valid_to < now) return false
-  return true
-}
 
 export default function FunderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const qc = useQueryClient()
   const funderQ = useFunder(id)
-  const rulesQ  = useGlobalRules(id)
+  const dealsQ  = useDealsList({ page_size: 500 })
   const funder  = funderQ.data ?? null
-  const rules   = rulesQ.data ?? []
   const loading = funderQ.isLoading
   const error   = funderQ.error?.message ?? null
-  const refresh = () => { invalidate.funders(qc); invalidate.rules(qc) }
+  const refresh = () => { invalidate.funders(qc) }
   const [editorOpen, setEditorOpen] = useState(false)
+  const [tab, setTab] = useState<'all' | 'active' | 'closed'>('all')
+
+  const funderDeals = useMemo(
+    () => (dealsQ.data?.rows ?? []).filter(d => d.funder_id === id),
+    [dealsQ.data, id],
+  )
+
+  const stats = useMemo(() => {
+    const total = funderDeals.length
+    const active = funderDeals.filter(d => d.status === 'FUNDS_TRANSFERRED').length
+    const approved = funderDeals.filter(d => d.status === 'APPROVED').length
+    const closed = funderDeals.filter(d => d.status === 'CANCELLED').length
+    const activeLoanSum = funderDeals
+      .filter(d => d.status === 'FUNDS_TRANSFERRED')
+      .reduce((s, d) => s + Number(d.transferred_amount ?? 0), 0)
+    const totalPayback = funderDeals
+      .filter(d => d.status === 'FUNDS_TRANSFERRED')
+      .reduce((s, d) => s + Number(d.payback_amount ?? 0), 0)
+    return { total, active, approved, closed, activeLoanSum, totalPayback }
+  }, [funderDeals])
+
+  const visibleDeals = useMemo(() => {
+    if (tab === 'active')  return funderDeals.filter(d => d.status === 'FUNDS_TRANSFERRED' || d.status === 'APPROVED')
+    if (tab === 'closed')  return funderDeals.filter(d => d.status === 'CANCELLED')
+    return funderDeals
+  }, [funderDeals, tab])
 
   if (loading) return (
     <div className="page wide" style={{ padding: '40px 28px', textAlign: 'center', color: 'var(--ink-4)' }}>Loading funder…</div>
@@ -43,7 +61,6 @@ export default function FunderDetailPage() {
     </div>
   )
 
-  const activeRules = rules.filter(isActiveRule)
   const hue = hueFromId(funder.id)
 
   return (
@@ -70,7 +87,7 @@ export default function FunderDetailPage() {
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>
               <span className="chip">{funder.commission_base === 'PAYBACK_AMOUNT' ? 'Payback base' : 'Transferred base'}</span>
-              <span style={{ marginLeft: 12 }}>{activeRules.length} active rule{activeRules.length !== 1 ? 's' : ''}</span>
+              <span style={{ marginLeft: 12 }}>{stats.total} deal{stats.total !== 1 ? 's' : ''} · {stats.active} active</span>
             </div>
           </div>
         </div>
@@ -78,6 +95,29 @@ export default function FunderDetailPage() {
           <button className="btn sm" onClick={() => setEditorOpen(true)}><Icons.Edit /> Edit</button>
           <Link href="/rules" className="btn sm">Manage rules</Link>
           <button className="close-btn" onClick={() => router.back()}><Icons.X /> Close</button>
+        </div>
+      </div>
+
+      <div className="kpi-grid" style={{ marginBottom: 24 }}>
+        <div className="kpi" style={{ cursor: 'default' }}>
+          <div className="kpi-label">Total deals</div>
+          <div className="kpi-val">{stats.total}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>all time</div>
+        </div>
+        <div className="kpi" style={{ cursor: 'default' }}>
+          <div className="kpi-label">Active loans</div>
+          <div className="kpi-val">{stats.active}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>funds transferred</div>
+        </div>
+        <div className="kpi" style={{ cursor: 'default' }}>
+          <div className="kpi-label">Active loan sum</div>
+          <div className="kpi-val">{fmt.money(stats.activeLoanSum)}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>transferred · outstanding</div>
+        </div>
+        <div className="kpi" style={{ cursor: 'default' }}>
+          <div className="kpi-label">Total payback</div>
+          <div className="kpi-val">{fmt.money(stats.totalPayback)}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>expected on active</div>
         </div>
       </div>
 
@@ -116,43 +156,54 @@ export default function FunderDetailPage() {
         </div>
 
         <div className="card">
-          <div className="card-head">
-            <div>
-              <h3>Commission rules <span className="badge" style={{ marginLeft: 4 }}>{rules.length}</span></h3>
-              <div className="sub">{activeRules.length} active · {rules.length - activeRules.length} expired</div>
+          <div className="card-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="tabs" role="tablist" style={{ borderBottom: 'none', margin: 0 }}>
+              <button className={'tab' + (tab === 'all' ? ' active' : '')} onClick={() => setTab('all')}>
+                All <span className="badge">{stats.total}</span>
+              </button>
+              <button className={'tab' + (tab === 'active' ? ' active' : '')} onClick={() => setTab('active')}>
+                Active <span className="badge">{stats.active + stats.approved}</span>
+              </button>
+              <button className={'tab' + (tab === 'closed' ? ' active' : '')} onClick={() => setTab('closed')}>
+                Closed <span className="badge">{stats.closed}</span>
+              </button>
             </div>
-            <Link href="/rules" className="btn sm ghost" style={{ fontSize: 11 }}>Manage <Icons.Chevron /></Link>
+            <Link href={`/deals?funder=${funder.id}`} className="btn sm ghost" style={{ fontSize: 11 }}>Open in deals <Icons.Chevron /></Link>
           </div>
-          {rules.length === 0 ? (
+          {dealsQ.isLoading ? (
             <div className="card-body" style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '40px 20px' }}>
-              No rules defined for this funder. Go to the <Link href="/rules" style={{ color: 'var(--accent-ink)' }}>Rules page</Link> to add one.
+              Loading deals…
+            </div>
+          ) : visibleDeals.length === 0 ? (
+            <div className="card-body" style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '40px 20px' }}>
+              No deals in this view.
             </div>
           ) : (
-            <div className="card-body flush">
-              {rules.map((r, i) => (
-                <div key={r.id} style={{
-                  padding: '14px 18px',
-                  borderBottom: i < rules.length - 1 ? '1px solid var(--line)' : 'none',
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  opacity: isActiveRule(r) ? 1 : 0.5,
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                      <Pill tone="info">{r.type === 'FIXED_PERCENT' ? 'Fixed' : 'Tiered'}</Pill>
-                      {!isActiveRule(r) && <Pill tone="default">Inactive</Pill>}
-                      {r.notes && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{r.notes}</span>}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
-                      Valid {fmt.dateShort(r.valid_from)} → {r.valid_to ? fmt.dateShort(r.valid_to) : '∞'}
-                    </div>
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: 'right' }}>
-                    {r.type === 'FIXED_PERCENT'
-                      ? (r.fixed_rate != null ? `${Number(r.fixed_rate)}%` : '—')
-                      : `${(r.commission_tiers ?? []).length} tier${(r.commission_tiers ?? []).length !== 1 ? 's' : ''}`}
-                  </div>
-                </div>
-              ))}
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Client</th>
+                    <th className="num">Transferred</th>
+                    <th className="num">Payback</th>
+                    <th>Status</th>
+                    <th>Funded</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleDeals.map(d => (
+                    <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${d.id}`)}>
+                      <td><span className="mono" style={{ color: 'var(--accent-ink)', fontWeight: 600, fontSize: 12 }}>{d.id.slice(0, 8)}</span></td>
+                      <td className="muted" style={{ fontSize: 12 }}>{d.accounts?.name ?? '—'}</td>
+                      <td className="num strong">{d.transferred_amount ? fmt.money(Number(d.transferred_amount)) : '—'}</td>
+                      <td className="num">{d.payback_amount ? fmt.money(Number(d.payback_amount)) : '—'}</td>
+                      <td><StatusPill status={dealStatusLabel(d.status)} /></td>
+                      <td className="muted" style={{ fontSize: 12 }}>{d.funds_transferred_at ? fmt.dateShort(d.funds_transferred_at) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

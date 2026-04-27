@@ -1,9 +1,11 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
-import { usePayoutSummary, qk } from '@/lib/queries'
+import { usePayoutSummary } from '@/lib/queries'
+import { usePageState } from '@/lib/pagination'
+import { Pagination } from '@/components/ui/pagination'
 import { Avatar } from '@/components/ui/avatar'
 import { Pill } from '@/components/ui/pill'
 import { PaymentFormModal } from '@/components/payments/payment-form-modal'
@@ -15,12 +17,17 @@ type Row = {
 
 export default function PayoutPage() {
   const qc = useQueryClient()
-  // ★ ONE round-trip — Postgres RPC returns agents+balances+payments in one shot.
-  const summaryQ = usePayoutSummary()
+  const [search, setSearch] = useState('')
+  const { page, setPage, pageSize } = usePageState()
+
+  const summaryQ = usePayoutSummary({ page, page_size: pageSize, q: search.trim() || undefined })
   const summary  = summaryQ.data
   const loading  = summaryQ.isLoading
   const error    = summaryQ.error?.message ?? null
-  const refresh  = () => qc.invalidateQueries({ queryKey: qk.page.payout() })
+  const total    = (summary as any)?.agents_total ?? 0
+  const refresh  = () => qc.invalidateQueries({ queryKey: ['page', 'payout'] })
+
+  useEffect(() => { setPage(1) }, [search, setPage])
 
   const rows: Row[] = useMemo(() => {
     return (summary?.agents ?? []).map(a => {
@@ -80,7 +87,7 @@ export default function PayoutPage() {
       <div className="page-head">
         <div>
           <h1>Payout</h1>
-          <p>{loading ? 'Loading…' : `${rows.length} agents · ${payableAgents} with available balance · ${payments.length} payments on record`}</p>
+          <p>{loading ? 'Loading…' : `${total.toLocaleString()} agents · ${payableAgents} with available balance · ${payments.length} recent payments`}</p>
         </div>
         <div className="actions">
           <button className="btn" onClick={exportCsv} disabled={rows.length === 0}>
@@ -202,11 +209,10 @@ export default function PayoutPage() {
 
         <div style={{
           padding: '11px 18px', borderTop: '1px solid var(--line)',
-          display: 'flex', justifyContent: 'space-between',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           background: 'var(--bg-sunk)', fontSize: 12,
         }}>
-          <span style={{ color: 'var(--ink-3)' }}>Total payable <strong style={{ color: 'var(--ink-1)' }}>{fmt.money(totals.available)}</strong></span>
-          <span style={{ color: 'var(--ink-3)' }}>Paid to date <strong style={{ color: 'var(--pos)' }}>{fmt.money(totals.paid)}</strong></span>
+          <Pagination page={page} total={total} pageSize={pageSize} onPage={setPage} />
         </div>
       </div>
 

@@ -1,9 +1,11 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { Pill } from '@/components/ui/pill'
 import { useEmailLogsList } from '@/lib/queries'
+import { usePageState } from '@/lib/pagination'
+import { Pagination } from '@/components/ui/pagination'
 import type { DbEmailLog } from '@/lib/api'
 
 const WEBHOOK_URL = 'https://erfoydohkmtgnezpttqv.functions.supabase.co/webhooks-resend'
@@ -39,12 +41,17 @@ export default function EmailLogsPage() {
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
 
+  const { page, setPage, pageSize } = usePageState()
   const queryParams = {
+    page, page_size: pageSize,
     ...(event  ? { event }  : {}),
     ...(status ? { status } : {}),
   }
   const logsQ = useEmailLogsList(queryParams)
-  const logs  = logsQ.data ?? []
+  const logs  = logsQ.data?.rows ?? []
+  const total = logsQ.data?.total ?? 0
+
+  useEffect(() => { setPage(1) }, [event, status, setPage])
 
   const filtered = useMemo(() => {
     if (!search.trim()) return logs
@@ -57,7 +64,7 @@ export default function EmailLogsPage() {
   }, [logs, search])
 
   const kpis = useMemo(() => {
-    const acc = { total: logs.length, sent: 0, delivered: 0, bounced: 0, failed: 0, webhookHits: 0 }
+    const acc = { total, sent: 0, delivered: 0, bounced: 0, failed: 0, webhookHits: 0 }
     for (const l of logs) {
       if (l.status === 'sent')                                  acc.sent++
       if (l.status === 'delivered' || l.status === 'opened' || l.status === 'clicked') acc.delivered++
@@ -97,7 +104,7 @@ export default function EmailLogsPage() {
       <div className="page-head">
         <div>
           <h1>Email Logs</h1>
-          <p>{logsQ.isLoading ? 'Loading…' : `${filtered.length} of ${logs.length} entries`}</p>
+          <p>{logsQ.isLoading ? 'Loading…' : `${filtered.length} on this page · ${total.toLocaleString()} total`}</p>
         </div>
         <div className="actions">
           <button className="btn" onClick={exportCsv} disabled={filtered.length === 0}>
@@ -216,6 +223,9 @@ export default function EmailLogsPage() {
             </table>
           </div>
         )}
+        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--line)' }}>
+          <Pagination page={page} total={total} pageSize={pageSize} onPage={setPage} />
+        </div>
       </div>
     </div>
   )

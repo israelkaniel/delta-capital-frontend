@@ -1,11 +1,13 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
 import { api, type DbProfileAdmin } from '@/lib/api'
 import { useUsersAdminSummary, invalidate } from '@/lib/queries'
+import { usePageState } from '@/lib/pagination'
+import { Pagination } from '@/components/ui/pagination'
 import { Pill } from '@/components/ui/pill'
 import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
@@ -23,7 +25,6 @@ const hueOf = (id: string) => (id.charCodeAt(0) * 37) % 360
 
 export default function AdminUsersPage() {
   const qc = useQueryClient()
-  const summaryQ = useUsersAdminSummary()
   const [search, setSearch] = useState('')
   const [statusTab, setStatusTab] = useState<'all' | 'active' | 'inactive' | 'pending'>('all')
   const [roleFilter, setRoleFilter] = useState<string>('all')
@@ -31,25 +32,21 @@ export default function AdminUsersPage() {
   const [actionFor, setActionFor] = useState<DbProfileAdmin | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
+  const { page, setPage, pageSize } = usePageState()
 
-  const users = summaryQ.data?.users ?? []
-  const kpis  = summaryQ.data?.kpis  ?? { total: 0, active: 0, pending: 0, admins: 0 }
+  const summaryQ = useUsersAdminSummary({
+    page, page_size: pageSize,
+    q:      search.trim() || undefined,
+    role:   roleFilter === 'all' ? undefined : roleFilter,
+    status: statusTab  === 'all' ? undefined : statusTab,
+  })
 
-  const filtered = useMemo(() => users.filter(u => {
-    if (statusTab === 'active'   && !u.is_active) return false
-    if (statusTab === 'inactive' &&  u.is_active) return false
-    if (statusTab === 'pending'  && u.first_login_at) return false
-    if (roleFilter !== 'all' && u.role !== roleFilter) return false
-    const q = search.toLowerCase()
-    return !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
-  }), [users, statusTab, roleFilter, search])
+  useEffect(() => { setPage(1) }, [search, statusTab, roleFilter, setPage])
 
-  const counts = {
-    all:      users.length,
-    active:   users.filter(u => u.is_active).length,
-    inactive: users.filter(u => !u.is_active).length,
-    pending:  users.filter(u => !u.first_login_at).length,
-  }
+  const filtered = summaryQ.data?.users ?? []
+  const total    = summaryQ.data?.total ?? 0
+  const kpis     = summaryQ.data?.kpis  ?? { total: 0, active: 0, pending: 0, admins: 0 }
+  const counts   = { all: kpis.total, active: kpis.active, inactive: kpis.total - kpis.active, pending: kpis.pending }
 
   const onUpdate = async (id: string, patch: { role?: string; is_active?: boolean }) => {
     const r = await api.users.update(id, patch)
@@ -201,6 +198,9 @@ export default function AdminUsersPage() {
             </table>
           </div>
         )}
+        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--line)' }}>
+          <Pagination page={page} total={total} pageSize={pageSize} onPage={setPage} />
+        </div>
       </div>
 
       {inviteOpen && (

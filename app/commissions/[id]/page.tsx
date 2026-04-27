@@ -185,7 +185,7 @@ export default function CommissionDetailPage() {
 
       <div className="tabs" style={{ marginBottom: 20 }}>
         {TABS.map(t => {
-          const badge = t === 'Emails' ? emailsQ.data?.length : undefined
+          const badge = t === 'Emails' ? emailsQ.data?.total : undefined
           return (
             <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
               {t}{badge != null && badge > 0 && <span className="badge" style={{ marginLeft: 6 }}>{badge}</span>}
@@ -204,7 +204,7 @@ export default function CommissionDetailPage() {
           </div>
           <div className="card-body flush">
             <EmailLogPanel
-              logs={emailsQ.data ?? []}
+              logs={emailsQ.data?.rows ?? []}
               loading={emailsQ.isLoading}
               error={emailsQ.error ? (emailsQ.error as Error).message : null}
               emptyMessage="No emails sent for this commission yet."
@@ -223,8 +223,8 @@ export default function CommissionDetailPage() {
             {(auditsQ.isLoading || emailsQ.isLoading) ? (
               <div style={{ padding: 32, textAlign: 'center', color: 'var(--ink-4)', fontSize: 13 }}>Loading…</div>
             ) : (() => {
-              const audits = auditsQ.data ?? []
-              const emails = emailsQ.data ?? []
+              const audits = auditsQ.data?.rows ?? []
+              const emails = emailsQ.data?.rows ?? []
               type Item = {
                 id: string; ts: string; kind: 'audit' | 'email'
                 audit?: DbAuditLog; emailItem?: ReturnType<typeof emailToTimelineItem>

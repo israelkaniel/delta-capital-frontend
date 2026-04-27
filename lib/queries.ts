@@ -1,20 +1,27 @@
 // Centralized query keys + hooks. Every list/detail page imports its hooks
 // from here, ensuring consistent cache keys for invalidation and prefetch.
+//
+// Every list hook accepts a `params` object (filters + page + page_size)
+// and returns a Paginated<T> = { rows, total, page, page_size }.
 
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import {
   dbDeals, dbCommissions, dbAgents, dbAccounts, dbFunders, dbPayments,
-  dbRules, dbNotes, dbRpc, dbEmailLogs, dbAuditLogs,
+  dbRules, dbNotes, dbRpc, dbEmailLogs, dbAuditLogs, dbSearch,
+  type DealsListParams, type CommissionsListParams, type AgentsListParams,
+  type AccountsListParams, type FundersListParams, type PaymentsListParams,
+  type EmailLogsListParams, type RulesListParams,
 } from './db'
 import { api } from './api'
+import { type Paginated, type PageParams } from './pagination'
 
-// ─── Query keys (stable, used as both cache keys and invalidation matchers) ─
+// ─── Query keys ────────────────────────────────────────────────────────────
 export const qk = {
   deals: {
     all:      ['deals'] as const,
-    list:     () => [...qk.deals.all, 'list'] as const,
+    list:     (params?: object) => [...qk.deals.all, 'list', params ?? {}] as const,
     detail:   (id: string) => [...qk.deals.all, 'detail', id] as const,
-    notes:    (id: string) => [...qk.deals.all, 'notes', id] as const,
+    notes:    (id: string, params?: object) => [...qk.deals.all, 'notes', id, params ?? {}] as const,
     timeline: (id: string) => [...qk.deals.all, 'timeline', id] as const,
   },
   commissions: {
@@ -24,19 +31,19 @@ export const qk = {
   },
   agents: {
     all:    ['agents'] as const,
-    list:   () => [...qk.agents.all, 'list'] as const,
+    list:   (params?: object) => [...qk.agents.all, 'list', params ?? {}] as const,
     detail: (id: string) => [...qk.agents.all, 'detail', id] as const,
     ledger: (id: string) => [...qk.agents.all, 'ledger', id] as const,
     ledgerBatch: (ids: string[]) => [...qk.agents.all, 'ledger-batch', [...ids].sort()] as const,
   },
   accounts: {
     all:    ['accounts'] as const,
-    list:   () => [...qk.accounts.all, 'list'] as const,
+    list:   (params?: object) => [...qk.accounts.all, 'list', params ?? {}] as const,
     detail: (id: string) => [...qk.accounts.all, 'detail', id] as const,
   },
   funders: {
     all:    ['funders'] as const,
-    list:   () => [...qk.funders.all, 'list'] as const,
+    list:   (params?: object) => [...qk.funders.all, 'list', params ?? {}] as const,
     detail: (id: string) => [...qk.funders.all, 'detail', id] as const,
   },
   payments: {
@@ -55,9 +62,8 @@ export const qk = {
   },
   rules: {
     all:        ['rules'] as const,
-    globalList: (funderId?: string) => [...qk.rules.all, 'global-list', funderId ?? null] as const,
-    agentList:  (funderId?: string, agentId?: string) =>
-      [...qk.rules.all, 'agent-list', { funderId: funderId ?? null, agentId: agentId ?? null }] as const,
+    globalList: (params?: object) => [...qk.rules.all, 'global-list', params ?? {}] as const,
+    agentList:  (params?: object) => [...qk.rules.all, 'agent-list', params ?? {}] as const,
   },
   reports: {
     agents:       () => ['reports', 'agents'] as const,
@@ -67,12 +73,15 @@ export const qk = {
     me: () => ['user', 'me'] as const,
   },
   page: {
-    dashboard:       () => ['page', 'dashboard'] as const,
-    payout:          () => ['page', 'payout'] as const,
-    agents:          () => ['page', 'agents'] as const,
-    agentDashboard:  (id: string) => ['page', 'agent-dashboard', id] as const,
-    usersAdmin:      () => ['page', 'users-admin'] as const,
+    dashboard:       (period?: object) => ['page', 'dashboard', period ?? {}] as const,
+    payout:          (params?: object) => ['page', 'payout', params ?? {}] as const,
+    agents:          (params?: object) => ['page', 'agents', params ?? {}] as const,
+    agentDashboard:  (id: string, params?: object) => ['page', 'agent-dashboard', id, params ?? {}] as const,
+    usersAdmin:      (params?: object) => ['page', 'users-admin', params ?? {}] as const,
     auditAdmin:      (filters: object) => ['page', 'audit-admin', filters] as const,
+  },
+  search: {
+    global: (q: string) => ['search', 'global', q] as const,
   },
   admin: {
     notifications:   () => ['admin', 'notifications'] as const,
@@ -89,29 +98,34 @@ async function unwrap<T>(p: Promise<{ data: T | null; error: Error | null }>): P
 }
 
 // ─── Read hooks (PostgREST direct, RLS-protected) ──────────────────────────
-export const useDealsList    = () => useQuery({ queryKey: qk.deals.list(),     queryFn: () => unwrap(dbDeals.list()) })
-export const useDeal         = (id: string) => useQuery({ queryKey: qk.deals.detail(id), queryFn: () => unwrap(dbDeals.get(id)), enabled: !!id })
-export const useDealNotes    = (id: string, enabled = true) =>
-  useQuery({ queryKey: qk.deals.notes(id), queryFn: () => unwrap(dbNotes.list(id)), enabled: !!id && enabled })
+export const useDealsList    = (params: DealsListParams = {}) =>
+  useQuery({ queryKey: qk.deals.list(params), queryFn: () => unwrap(dbDeals.list(params)) })
+export const useDeal         = (id: string) =>
+  useQuery({ queryKey: qk.deals.detail(id), queryFn: () => unwrap(dbDeals.get(id)), enabled: !!id })
+export const useDealNotes    = (id: string, params: PageParams = {}, enabled = true) =>
+  useQuery({ queryKey: qk.deals.notes(id, params), queryFn: () => unwrap(dbNotes.list(id, params)), enabled: !!id && enabled })
 
-export const useCommissionsList = (params?: { status?: string; agent_id?: string; period?: string }) =>
+export const useCommissionsList = (params: CommissionsListParams = {}) =>
   useQuery({ queryKey: qk.commissions.list(params), queryFn: () => unwrap(dbCommissions.list(params)) })
 export const useCommission = (id: string) =>
   useQuery({ queryKey: qk.commissions.detail(id), queryFn: () => unwrap(dbCommissions.get(id)), enabled: !!id })
 
-export const useAgentsList = () => useQuery({ queryKey: qk.agents.list(), queryFn: () => unwrap(dbAgents.list()) })
+export const useAgentsList = (params: AgentsListParams = {}) =>
+  useQuery({ queryKey: qk.agents.list(params), queryFn: () => unwrap(dbAgents.list(params)) })
 export const useAgent      = (id: string) =>
   useQuery({ queryKey: qk.agents.detail(id), queryFn: () => unwrap(dbAgents.get(id)), enabled: !!id })
 
-export const useAccountsList = () => useQuery({ queryKey: qk.accounts.list(), queryFn: () => unwrap(dbAccounts.list()) })
+export const useAccountsList = (params: AccountsListParams = {}) =>
+  useQuery({ queryKey: qk.accounts.list(params), queryFn: () => unwrap(dbAccounts.list(params)) })
 export const useAccount      = (id: string) =>
   useQuery({ queryKey: qk.accounts.detail(id), queryFn: () => unwrap(dbAccounts.get(id)), enabled: !!id })
 
-export const useFundersList = () => useQuery({ queryKey: qk.funders.list(), queryFn: () => unwrap(dbFunders.list()) })
+export const useFundersList = (params: FundersListParams = {}) =>
+  useQuery({ queryKey: qk.funders.list(params), queryFn: () => unwrap(dbFunders.list(params)) })
 export const useFunder      = (id: string) =>
   useQuery({ queryKey: qk.funders.detail(id), queryFn: () => unwrap(dbFunders.get(id)), enabled: !!id })
 
-export const usePaymentsList = (params?: { agent_id?: string; status?: string; from?: string; to?: string }) =>
+export const usePaymentsList = (params: PaymentsListParams = {}) =>
   useQuery({ queryKey: qk.payments.list(params), queryFn: () => unwrap(dbPayments.list(params)) })
 
 export const useAgentSummaryAvailable = (agentId: string, enabled = true) =>
@@ -128,7 +142,7 @@ export const useMonthlySummaryAvailable = (summaryId: string, enabled = true) =>
     enabled: enabled && !!summaryId,
   })
 
-export const useEmailLogsList = (params?: { event?: string; status?: string; agent_id?: string }) =>
+export const useEmailLogsList = (params: EmailLogsListParams = {}) =>
   useQuery({ queryKey: qk.emailLogs.list(params), queryFn: () => unwrap(dbEmailLogs.list(params)) })
 
 export const useEmailLogsByRelatedIds = (ids: string[], enabled = true) =>
@@ -145,30 +159,37 @@ export const useCommissionScopeAudits = (commissionId: string, reserveIds: strin
     enabled: enabled && !!commissionId,
   })
 
-export const useGlobalRules = (funderId?: string) =>
-  useQuery({ queryKey: qk.rules.globalList(funderId), queryFn: () => unwrap(dbRules.globalList({ funder_id: funderId })) })
-export const useAgentRules  = (params?: { funder_id?: string; agent_id?: string }) =>
-  useQuery({ queryKey: qk.rules.agentList(params?.funder_id, params?.agent_id), queryFn: () => unwrap(dbRules.agentList(params)) })
+export const useGlobalRules = (params: RulesListParams = {}) =>
+  useQuery({ queryKey: qk.rules.globalList(params), queryFn: () => unwrap(dbRules.globalList(params)) })
+export const useAgentRules  = (params: RulesListParams = {}) =>
+  useQuery({ queryKey: qk.rules.agentList(params), queryFn: () => unwrap(dbRules.agentList(params)) })
 
 // ─── Page-level RPC hooks (one round-trip for the entire page) ────────────
-export const useDashboardSummary = () => useQuery({
-  queryKey: qk.page.dashboard(), queryFn: () => unwrap(dbRpc.dashboardSummary()),
+import type { DashboardPeriod } from './db'
+export const useDashboardSummary = (period: DashboardPeriod = {}) => useQuery({
+  queryKey: qk.page.dashboard(period),
+  queryFn: () => unwrap(dbRpc.dashboardSummary(period)),
 })
-export const usePayoutSummary = () => useQuery({
-  queryKey: qk.page.payout(), queryFn: () => unwrap(dbRpc.payoutSummary()),
+export const usePayoutSummary = (params: PageParams & { q?: string } = {}) => useQuery({
+  queryKey: qk.page.payout(params),
+  queryFn: () => unwrap(dbRpc.payoutSummary(params)),
 })
-export const useAgentsSummary = () => useQuery({
-  queryKey: qk.page.agents(), queryFn: () => unwrap(dbRpc.agentsSummary()),
+export const useAgentsSummary = (params: PageParams & { q?: string } = {}) => useQuery({
+  queryKey: qk.page.agents(params),
+  queryFn: () => unwrap(dbRpc.agentsSummary(params)),
 })
-export const useAgentDashboard = (id: string) => useQuery({
-  queryKey: qk.page.agentDashboard(id),
-  queryFn: () => unwrap(dbRpc.agentDashboard(id)),
+export const useAgentDashboard = (id: string, params: { dealsPage?: number; dealsPageSize?: number } = {}) => useQuery({
+  queryKey: qk.page.agentDashboard(id, params),
+  queryFn: () => unwrap(dbRpc.agentDashboard(id, params)),
   enabled: !!id,
 })
 
-export const useUsersAdminSummary = (enabled = true) => useQuery({
-  queryKey: qk.page.usersAdmin(),
-  queryFn: () => unwrap(dbRpc.usersAdminSummary()),
+export const useUsersAdminSummary = (
+  params: PageParams & { q?: string; role?: string; status?: string } = {},
+  enabled = true,
+) => useQuery({
+  queryKey: qk.page.usersAdmin(params),
+  queryFn: () => unwrap(dbRpc.usersAdminSummary(params)),
   enabled,
 })
 
@@ -177,6 +198,13 @@ export const useAuditAdminSummary = (filters: AuditFilters, enabled = true) => u
   queryKey: qk.page.auditAdmin(filters),
   queryFn: () => unwrap(dbRpc.auditAdminSummary(filters)),
   enabled,
+})
+
+export const useGlobalSearch = (q: string, enabled = true) => useQuery({
+  queryKey: qk.search.global(q),
+  queryFn: () => unwrap(dbSearch.global(q)),
+  enabled: enabled && q.trim().length >= 2,
+  staleTime: 15_000,
 })
 
 export const useAdminNotifications = (enabled = true) => useQuery({
@@ -250,7 +278,7 @@ export const useReportsMonthlyBatch = (months: string[]) => useQuery({
   enabled: months.length > 0,
 })
 
-// ─── Prefetch helpers (used on hover / IntersectionObserver) ───────────────
+// ─── Prefetch helpers ──────────────────────────────────────────────────────
 export const prefetch = {
   deal:       (qc: QueryClient, id: string) => qc.prefetchQuery({ queryKey: qk.deals.detail(id),       queryFn: () => unwrap(dbDeals.get(id)) }),
   commission: (qc: QueryClient, id: string) => qc.prefetchQuery({ queryKey: qk.commissions.detail(id), queryFn: () => unwrap(dbCommissions.get(id)) }),
@@ -259,7 +287,7 @@ export const prefetch = {
   funder:     (qc: QueryClient, id: string) => qc.prefetchQuery({ queryKey: qk.funders.detail(id),     queryFn: () => unwrap(dbFunders.get(id)) }),
 }
 
-// ─── Invalidation helpers (call after mutations) ───────────────────────────
+// ─── Invalidation helpers ──────────────────────────────────────────────────
 export const invalidate = {
   deals:       (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.deals.all }),
   deal:        (qc: QueryClient, id: string) => qc.invalidateQueries({ queryKey: qk.deals.detail(id) }),
@@ -269,11 +297,11 @@ export const invalidate = {
   funders:     (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.funders.all }),
   payments:    (qc: QueryClient) => {
     qc.invalidateQueries({ queryKey: qk.payments.all })
-    qc.invalidateQueries({ queryKey: qk.page.payout() })
+    qc.invalidateQueries({ queryKey: ['page', 'payout'] })
   },
   emailLogs:   (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.emailLogs.all }),
   rules:       (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.rules.all }),
-  usersAdmin:  (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.page.usersAdmin() }),
+  usersAdmin:  (qc: QueryClient) => qc.invalidateQueries({ queryKey: ['page', 'users-admin'] }),
   auditAdmin:  (qc: QueryClient) => qc.invalidateQueries({ queryKey: ['page', 'audit-admin'] }),
   adminNotifications: (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.admin.notifications() }),
   inviteTemplate:     (qc: QueryClient) => qc.invalidateQueries({ queryKey: qk.admin.inviteTemplate() }),

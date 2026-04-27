@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
@@ -12,9 +12,24 @@ import { Avatar } from '@/components/ui/avatar'
 import { EmailLogPanel } from '@/components/email/email-log-panel'
 import { PaymentsPanel } from '@/components/payments/payments-panel'
 import { PaymentFormModal } from '@/components/payments/payment-form-modal'
+import { exportCSV, csvFmt, todayStamp } from '@/lib/export-csv'
+import { createClient } from '@/lib/supabase/client'
 
-const TABS = ['Overview', 'Payments', 'Emails'] as const
+const TABS = ['Overview', 'Monthly', 'Payments', 'Emails'] as const
 type Tab = typeof TABS[number]
+
+type MonthlyRow = {
+  id: string
+  close_year: number | null
+  close_month: number | null
+  total_earned: number
+  total_reserved: number
+  total_released: number
+  total_reversed: number
+  total_paid: number
+  balance: number
+  closed_at: string | null
+}
 
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -35,9 +50,51 @@ export default function AgentDetailPage() {
   const [savingActive, setSavingActive] = useState(false)
   const [tab, setTab] = useState<Tab>('Overview')
   const [payModalOpen, setPayModalOpen] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [savingName, setSavingName] = useState(false)
 
   const emailsQ   = useEmailLogsList({ agent_id: id })
   const paymentsQ = usePaymentsList({ agent_id: id })
+
+  const monthlyQ = useQuery({
+    queryKey: ['agents', 'monthly-summaries', id],
+    enabled: !!id && tab === 'Monthly',
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('monthly_summaries')
+        .select('id, close_year, close_month, total_earned, total_reserved, total_released, total_reversed, total_paid, balance, monthly_closes(closed_at)')
+        .eq('agent_id', id)
+        .order('close_year', { ascending: false })
+        .order('close_month', { ascending: false })
+      if (error) throw error
+      return ((data ?? []) as any[]).map(r => ({
+        ...r,
+        closed_at: r.monthly_closes?.closed_at ?? null,
+      })) as MonthlyRow[]
+    },
+  })
+
+  const startEditName = () => {
+    if (!agent) return
+    setNameDraft(agent.profiles?.name ?? '')
+    setEditingName(true)
+  }
+
+  const saveName = async () => {
+    if (!agent) return
+    const trimmed = nameDraft.trim()
+    if (!trimmed || trimmed === (agent.profiles?.name ?? '')) { setEditingName(false); return }
+    setSavingName(true)
+    const supabase = createClient()
+    const userId = (agent.profiles as any)?.id ?? agent.id
+    const { error } = await supabase.from('profiles').update({ name: trimmed }).eq('id', userId)
+    setSavingName(false)
+    if (error) { alert(`Couldn't save name: ${error.message}`); return }
+    setEditingName(false)
+    refresh()
+  }
 
   const totalVolume = useMemo(
     () => deals.reduce((s: number, d: any) => s + Number(d.transferred_amount ?? 0), 0),
@@ -85,8 +142,30 @@ export default function AgentDetailPage() {
           <Avatar name={name} hue={hue} size="lg" />
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <h1 style={{ margin: 0 }}>{name}</h1>
-              {!agent.is_active && <Pill tone="warn">Inactive</Pill>}
+              {editingName ? (
+                <>
+                  <input
+                    className="input"
+                    autoFocus
+                    value={nameDraft}
+                    onChange={e => setNameDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false) }}
+                    style={{ fontSize: 22, fontWeight: 600, padding: '4px 10px', width: 320 }}
+                  />
+                  <button className="btn sm primary" onClick={saveName} disabled={savingName}>
+                    {savingName ? 'Saving…' : 'Save'}
+                  </button>
+                  <button className="btn sm ghost" onClick={() => setEditingName(false)}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <h1 style={{ margin: 0 }}>{name}</h1>
+                  <button className="btn sm ghost" onClick={startEditName} aria-label="Edit name" title="Edit name">
+                    <Icons.Edit style={{ width: 13, height: 13 }} />
+                  </button>
+                  {!agent.is_active && <Pill tone="warn">Inactive</Pill>}
+                </>
+              )}
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--ink-3)', display: 'flex', gap: 14 }}>
               {agent.code && <span className="mono" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{agent.code}</span>}
@@ -98,6 +177,31 @@ export default function AgentDetailPage() {
           <Link href={`/ledger/${agent.id}`} className="btn sm">
             <Icons.Ledger /> Open ledger
           </Link>
+          <button
+            className="btn sm"
+            disabled={!commissions.length && !deals.length}
+            onClick={() => exportCSV(`agent-${agent.code ?? agent.id.slice(0, 8)}-${todayStamp()}`, [
+              { header: 'Type',         value: r => r.type },
+              { header: 'Date',         value: r => csvFmt.date(r.date) },
+              { header: 'Reference',    value: r => r.ref },
+              { header: 'Description',  value: r => r.desc },
+              { header: 'Amount',       value: r => csvFmt.money(r.amount) },
+              { header: 'Status',       value: r => r.status },
+            ], [
+              ...commissions.map((c: any) => ({
+                type: 'Commission', date: c.calculated_at, ref: c.id.slice(0, 8),
+                desc: c.deal_agents?.deals?.accounts?.name ?? '—',
+                amount: c.total_amount, status: commStatusLabel(c.status),
+              })),
+              ...deals.map((d: any) => ({
+                type: 'Deal', date: d.funds_transferred_at ?? d.created_at, ref: d.id.slice(0, 8),
+                desc: d.accounts?.name ?? '—',
+                amount: d.transferred_amount, status: dealStatusLabel(d.status),
+              })),
+            ])}
+          >
+            <Icons.Download /> Export
+          </button>
           {agent.profiles?.email && <a href={`mailto:${agent.profiles.email}`} className="btn sm"><Icons.Mail /> Email</a>}
           <button className="btn sm" onClick={toggleActive} disabled={savingActive}>
             {agent.is_active ? 'Deactivate' : 'Activate'}
@@ -134,8 +238,9 @@ export default function AgentDetailPage() {
       <div className="tabs" style={{ marginBottom: 20 }}>
         {TABS.map(t => {
           const badge =
-            t === 'Emails'   ? emailsQ.data?.length :
-            t === 'Payments' ? paymentsQ.data?.length :
+            t === 'Emails'   ? emailsQ.data?.total :
+            t === 'Payments' ? paymentsQ.data?.total :
+            t === 'Monthly'  ? monthlyQ.data?.length :
             undefined
           return (
             <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
@@ -144,6 +249,61 @@ export default function AgentDetailPage() {
           )
         })}
       </div>
+
+      {tab === 'Monthly' && (
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <h3>Monthly summaries</h3>
+              <div className="sub">Per-period totals from the agent's ledger</div>
+            </div>
+          </div>
+          {monthlyQ.isLoading ? (
+            <div className="card-body" style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '40px 20px' }}>
+              Loading…
+            </div>
+          ) : (monthlyQ.data ?? []).length === 0 ? (
+            <div className="card-body" style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '40px 20px' }}>
+              No closed monthly summaries for this agent yet.
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Period</th>
+                    <th className="num">Earned</th>
+                    <th className="num">Reserved</th>
+                    <th className="num">Released</th>
+                    <th className="num">Reversed</th>
+                    <th className="num">Paid</th>
+                    <th className="num">Balance</th>
+                    <th>Closed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(monthlyQ.data ?? []).map(r => {
+                    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                    const period = r.close_year && r.close_month ? `${MONTHS[r.close_month - 1]} ${r.close_year}` : '—'
+                    return (
+                      <tr key={r.id}>
+                        <td className="strong">{period}</td>
+                        <td className="num">{fmt.money(Number(r.total_earned))}</td>
+                        <td className="num">{fmt.money(Number(r.total_reserved))}</td>
+                        <td className="num">{fmt.money(Number(r.total_released))}</td>
+                        <td className="num">{fmt.money(Number(r.total_reversed))}</td>
+                        <td className="num">{fmt.money(Number(r.total_paid))}</td>
+                        <td className="num strong">{fmt.money(Number(r.balance))}</td>
+                        <td className="muted-num">{r.closed_at ? fmt.dateShort(r.closed_at) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === 'Payments' && (
         <div className="card">
@@ -158,7 +318,7 @@ export default function AgentDetailPage() {
           </div>
           <div className="card-body flush" style={{ padding: 0 }}>
             <PaymentsPanel
-              payments={paymentsQ.data ?? []}
+              payments={paymentsQ.data?.rows ?? []}
               loading={paymentsQ.isLoading}
               error={paymentsQ.error ? (paymentsQ.error as Error).message : null}
               emptyMessage="No payments recorded for this agent yet."
@@ -177,7 +337,7 @@ export default function AgentDetailPage() {
           </div>
           <div className="card-body flush">
             <EmailLogPanel
-              logs={emailsQ.data ?? []}
+              logs={emailsQ.data?.rows ?? []}
               loading={emailsQ.isLoading}
               error={emailsQ.error ? (emailsQ.error as Error).message : null}
               emptyMessage="No emails have been sent to this agent yet."

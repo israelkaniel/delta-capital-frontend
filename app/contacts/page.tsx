@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
@@ -8,7 +8,12 @@ import { Avatar } from '@/components/ui/avatar'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { api, type DbAccount, type DbContact } from '@/lib/api'
 import { useAccountsList, invalidate } from '@/lib/queries'
+import { usePageState } from '@/lib/pagination'
+import { Pagination } from '@/components/ui/pagination'
 import { ContactEditor } from '@/components/contacts/contact-editor'
+import { DELETE_RECORDS_ENABLED } from '@/lib/feature-flags'
+import { exportCSV, todayStamp } from '@/lib/export-csv'
+import { BulkBar, BulkHeaderCheckbox } from '@/components/ui/bulk-bar'
 
 type FlatContact = DbContact & { accountName: string }
 
@@ -17,10 +22,20 @@ const hueFromId = (id: string) => (id.charCodeAt(id.length - 1) * 47) % 360
 export default function ContactsPage() {
   const router = useRouter()
   const qc = useQueryClient()
-  const accountsQ = useAccountsList()
-  const accounts  = accountsQ.data ?? []
+
+  const [search, setSearch] = useState('')
+  const [accountFilter, setAccountFilter] = useState('')
+  const [editor, setEditor] = useState<{ accountId: string; editing?: DbContact } | null>(null)
+  const [pickAccount, setPickAccount] = useState(false)
+  const { page, setPage, pageSize } = usePageState()
+
+  const accountsQ = useAccountsList({ page, page_size: pageSize, q: search.trim() || undefined })
+  const accounts  = accountsQ.data?.rows ?? []
+  const total     = accountsQ.data?.total ?? 0
   const loading   = accountsQ.isLoading
   const refresh   = () => invalidate.accounts(qc)
+
+  useEffect(() => { setPage(1) }, [search, setPage])
 
   const contacts = useMemo<FlatContact[]>(() => {
     const flat: FlatContact[] = []
@@ -32,11 +47,6 @@ export default function ContactsPage() {
     return flat
   }, [accounts])
 
-  const [search, setSearch] = useState('')
-  const [accountFilter, setAccountFilter] = useState('')
-  const [editor, setEditor] = useState<{ accountId: string; editing?: DbContact } | null>(null)
-  const [pickAccount, setPickAccount] = useState(false)
-
   const filtered = useMemo(() => contacts.filter(c => {
     if (accountFilter && c.account_id !== accountFilter) return false
     const q = search.toLowerCase()
@@ -45,6 +55,20 @@ export default function ContactsPage() {
       || c.accountName.toLowerCase().includes(q)
       || (c.email ?? '').toLowerCase().includes(q)
   }), [contacts, search, accountFilter])
+
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const toggle = (id: string) => {
+    const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s)
+  }
+  const toggleAll = () => {
+    selected.size === filtered.length ? setSelected(new Set()) : setSelected(new Set(filtered.map(c => c.id)))
+  }
+  const exportColumns: any = [
+    { header: 'Name',   value: (c: any) => c.name },
+    { header: 'Client', value: (c: any) => c.accountName },
+    { header: 'Email',  value: (c: any) => c.email ?? '' },
+    { header: 'Phone',  value: (c: any) => c.phone ?? '' },
+  ]
 
   const removeContact = async (c: FlatContact) => {
     if (!confirm(`Remove ${c.name}?`)) return
@@ -58,9 +82,16 @@ export default function ContactsPage() {
       <div className="page-head">
         <div>
           <h1>Contacts</h1>
-          <p>{loading ? 'Loading…' : `${contacts.length} contacts across ${accounts.length} clients`}</p>
+          <p>{loading ? 'Loading…' : `${contacts.length} contacts on this page · ${total.toLocaleString()} clients total`}</p>
         </div>
         <div className="actions">
+          <button
+            className="btn"
+            disabled={!filtered.length}
+            onClick={() => exportCSV(`contacts-${todayStamp()}`, exportColumns, filtered)}
+          >
+            <Icons.Download /> Export
+          </button>
           <button className="btn primary" onClick={() => setPickAccount(true)}>
             <Icons.Plus /> Add contact
           </button>
@@ -71,24 +102,40 @@ export default function ContactsPage() {
         search={search} setSearch={setSearch}
         placeholder="Search contacts, clients, emails…"
         chips={[
-          { label: accountFilter ? accounts.find(a => a.id === accountFilter)?.name ?? 'Client' : 'Client', value: accountFilter, onClick: () => setAccountFilter('') },
+          { label: accountFilter ? accounts.find((a: any) => a.id === accountFilter)?.name ?? 'Client' : 'Client', value: accountFilter, onClick: () => setAccountFilter('') },
         ]}
       />
+
+      <BulkBar count={selected.size} onClear={() => setSelected(new Set())}>
+        <button
+          className="btn sm"
+          onClick={() => exportCSV(`contacts-selected-${todayStamp()}`, exportColumns, contacts.filter(c => selected.has(c.id)))}
+        >
+          <Icons.Download /> Export selected
+        </button>
+      </BulkBar>
 
       <div className="card" style={{ marginTop: 16 }}>
         <div className="table-wrap">
           <table className="tbl">
             <thead>
               <tr>
+                <th style={{ width: 36 }}>
+                  <BulkHeaderCheckbox selectedCount={selected.size} totalCount={filtered.length} onToggleAll={toggleAll} />
+                </th>
                 <th>Name</th><th>Client</th><th>Email</th><th>Phone</th><th style={{ width: 80 }}></th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={5} style={{ padding: 48, textAlign: 'center', color: 'var(--ink-4)' }}>Loading…</td></tr>
+                <tr><td colSpan={6} style={{ padding: 48, textAlign: 'center', color: 'var(--ink-4)' }}>Loading…</td></tr>
               )}
               {!loading && filtered.map(c => (
-                <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/clients/${c.account_id}`)}>
+                <tr key={c.id} className={selected.has(c.id) ? 'selected' : ''}
+                    style={{ cursor: 'pointer' }} onClick={() => router.push(`/clients/${c.account_id}`)}>
+                  <td onClick={e => { e.stopPropagation(); toggle(c.id) }}>
+                    <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                  </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <Avatar name={c.name} hue={hueFromId(c.id)} size="md" />
@@ -105,13 +152,15 @@ export default function ContactsPage() {
                   <td onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <button className="btn sm ghost" onClick={() => setEditor({ accountId: c.account_id, editing: c })} aria-label="Edit"><Icons.Edit style={{ width: 13, height: 13 }} /></button>
-                      <button className="btn sm ghost" onClick={() => removeContact(c)} aria-label="Delete"><Icons.Trash style={{ width: 13, height: 13 }} /></button>
+                      {DELETE_RECORDS_ENABLED && (
+                        <button className="btn sm ghost" onClick={() => removeContact(c)} aria-label="Delete"><Icons.Trash style={{ width: 13, height: 13 }} /></button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={5}>
+                <tr><td colSpan={6}>
                   <div className="empty-state">
                     <div className="empty-state-icon"><Icons.Search /></div>
                     <p className="empty-state-title">No contacts found</p>
@@ -134,9 +183,13 @@ export default function ContactsPage() {
         />
       )}
 
+      <div style={{ padding: '0 18px' }}>
+        <Pagination page={page} total={total} pageSize={pageSize} onPage={setPage} />
+      </div>
+
       {pickAccount && (
         <PickAccountModal
-          accounts={accounts}
+          accounts={accounts as DbAccount[]}
           onClose={() => setPickAccount(false)}
           onPick={(accountId) => { setPickAccount(false); setEditor({ accountId }) }}
         />

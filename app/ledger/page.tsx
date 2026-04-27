@@ -3,9 +3,11 @@
 // endpoint, but returns all agents in one round-trip. Cache is shared with the
 // /payout page so navigating between them is instant.
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePayoutSummary } from '@/lib/queries'
+import { usePageState } from '@/lib/pagination'
+import { Pagination } from '@/components/ui/pagination'
 import { Avatar } from '@/components/ui/avatar'
 import { Icons } from '@/lib/icons'
 import { fmt } from '@/lib/fmt'
@@ -24,8 +26,12 @@ type AgentRow = {
 }
 
 export default function LedgerPage() {
-  const summaryQ = usePayoutSummary()
+  const [search, setSearch] = useState('')
+  const { page, setPage, pageSize } = usePageState()
+  const summaryQ = usePayoutSummary({ page, page_size: pageSize, q: search.trim() || undefined })
   const loading  = summaryQ.isLoading
+  const total    = (summaryQ.data as any)?.agents_total ?? 0
+  useEffect(() => { setPage(1) }, [search, setPage])
 
   const rows = useMemo<AgentRow[]>(() => {
     const agents = summaryQ.data?.agents ?? []
@@ -63,7 +69,7 @@ export default function LedgerPage() {
       <div className="page-head">
         <div>
           <h1>Agent Ledger</h1>
-          <p>{loading ? 'Loading…' : `${rows.length} agents · ${fmt.moneyK(totals.available)} total available`}</p>
+          <p>{loading ? 'Loading…' : `${total.toLocaleString()} agents on this page · ${fmt.moneyK(totals.available)} available`}</p>
         </div>
         <div className="actions">
           <button className="btn"><Icons.Download /> Export</button>
@@ -127,6 +133,9 @@ export default function LedgerPage() {
             </table>
           </div>
         )}
+        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--line)' }}>
+          <Pagination page={page} total={total} pageSize={pageSize} onPage={setPage} />
+        </div>
       </div>
     </div>
   )
